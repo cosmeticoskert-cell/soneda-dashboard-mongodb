@@ -166,6 +166,11 @@
   .import-status { color: var(--text-dim); font-family: 'DM Mono', monospace; font-size: 0.74rem; min-height: 18px; margin-top: 12px; }
   .import-status.ok { color: var(--accent2); }
   .import-status.err { color: #ff6b6b; }
+  .btn-danger { background: transparent; border: 1px solid #ff6b6b; color: #ff6b6b; padding: 6px 10px; border-radius: 8px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.68rem; letter-spacing: .4px; transition: all .2s; white-space: nowrap; }
+  .btn-danger:hover { background: rgba(255,107,107,0.12); }
+  .history-note { color: var(--text-dim); font-family: 'DM Mono', monospace; font-size: 0.7rem; line-height: 1.45; margin-top: 6px; }
+  .history-tag { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-family: 'DM Mono', monospace; font-size: 0.64rem; color: var(--text-dim); }
+  .history-tag.deleted { color: #ff6b6b; border-color: rgba(255,107,107,0.45); }
   @media (max-width: 820px) { .import-row { grid-template-columns: 1fr; } .import-file { width: 100%; min-width: 0; } }
 
   /* LOGIN ADM */
@@ -361,6 +366,16 @@
       </div>
       <button class="btn-import secondary" onclick="recarregarDados()">Atualizar painel</button>
       <div id="import-status" class="import-status"></div>
+    </div>
+
+    <div class="table-card" style="margin-top:20px">
+      <div class="table-head">
+        <div class="table-head-title">Histórico de Importações</div>
+        <div class="history-note">
+          Cada importação recebe um ID de lote. Se um arquivo for importado errado, use esse histórico para localizar e excluir o lote do banco.
+        </div>
+      </div>
+      <div id="import-history-body"><div class="no-data">Faça login para carregar o histórico...</div></div>
     </div>
   </div>
 
@@ -728,7 +743,7 @@
 
 <script>
 // ── CONFIGURAÇÃO ──────────────────────────────────────────────────────────────
-const API_BASE = '';
+const API_BASE = 'http://localhost:3000';
 
 let rawData      = [];
 let deParaMap    = {};
@@ -855,6 +870,7 @@ function admAtualizarUI() {
     loginEl.style.display  = 'none';
     painelEl.style.display = 'block';
     if (barEl) barEl.style.display = 'flex';
+    carregarHistoricoImportacoes();
   } else {
     loginEl.style.display  = 'flex';
     painelEl.style.display = 'none';
@@ -946,13 +962,161 @@ async function enviarCSV(inputId, rota) {
     }
     if (!response.ok) throw new Error(data.erro || data.detalhe || 'Erro ao importar CSV');
 
-    status.textContent = `${data.mensagem || 'Importação realizada com sucesso'} (${data.total || 0} registros).`;
+    status.textContent = `${data.mensagem || 'Importação realizada com sucesso'} (${data.total || 0} registros). Lote: ${data.importacao_id || '—'}`;
     status.className = 'import-status ok';
+    await carregarHistoricoImportacoes();
 
   } catch (error) {
     console.error(error);
     status.textContent = `Erro ao importar: ${error.message}`;
     status.className = 'import-status err';
+  }
+}
+
+function formatarDataHoraImportacao(valor) {
+  if (!valor) return '—';
+  const dt = new Date(valor);
+  if (isNaN(dt)) return String(valor);
+  return dt.toLocaleString('pt-BR');
+}
+
+function escaparHTML(valor) {
+  return String(valor ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+async function carregarHistoricoImportacoes() {
+  const container = document.getElementById('import-history-body');
+  const token = admGetToken();
+
+  if (!container || !token) return;
+
+  try {
+    container.innerHTML = '<div class="no-data">Carregando histórico...</div>';
+
+    const response = await fetch(`${API_BASE}/api/importacoes`, {
+      cache: 'no-store',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    const dados = await response.json();
+
+    if (response.status === 401) {
+      sessionStorage.removeItem('adm_token');
+      admAtualizarUI();
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
+    if (!response.ok) {
+      throw new Error(dados.erro || dados.detalhe || 'Erro ao carregar histórico.');
+    }
+
+    if (!Array.isArray(dados) || dados.length === 0) {
+      container.innerHTML = '<div class="no-data">Nenhuma importação registrada ainda.</div>';
+      return;
+    }
+
+    const linhas = dados.map(item => {
+      const excluido = Boolean(item.excluido);
+      const substitui = Boolean(item.substitui_colecao);
+      const aviso = substitui ? 'Substitui base' : 'Lote';
+      const status = excluido
+        ? `<span class="history-tag deleted">Excluído</span>`
+        : `<span class="history-tag">${aviso}</span>`;
+
+      const botaoExcluir = excluido
+        ? '—'
+        : `<button class="btn-danger" onclick="excluirImportacao('${escaparHTML(item.importacao_id)}')">Excluir lote</button>`;
+
+      return `<tr>
+        <td class="td-loja">${formatarDataHoraImportacao(item.criado_em)}</td>
+        <td class="td-nome">${escaparHTML(item.usuario)}</td>
+        <td class="td-nome">${escaparHTML(item.tipo)}</td>
+        <td class="td-nome">${escaparHTML(item.arquivo_original)}</td>
+        <td class="td-loja">${escaparHTML(item.importacao_id)}</td>
+        <td class="td-qty">${Number(item.total_registros || 0).toLocaleString('pt-BR')}</td>
+        <td>${status}</td>
+        <td>${botaoExcluir}</td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `<table>
+      <thead>
+        <tr>
+          <th>Data/Hora</th>
+          <th>Usuário</th>
+          <th>Tipo</th>
+          <th>Arquivo</th>
+          <th>ID do Lote</th>
+          <th>Registros</th>
+          <th>Status</th>
+          <th>Ação</th>
+        </tr>
+      </thead>
+      <tbody>${linhas}</tbody>
+    </table>`;
+
+  } catch (error) {
+    console.error(error);
+    container.innerHTML = `<div class="no-data err">Erro ao carregar histórico: ${escaparHTML(error.message)}</div>`;
+  }
+}
+
+async function excluirImportacao(importacaoId) {
+  const status = document.getElementById('import-status');
+  const token = admGetToken();
+
+  if (!token) {
+    admAtualizarUI();
+    return;
+  }
+
+  const confirmar = confirm(
+    `Tem certeza que deseja excluir a importação ${importacaoId}?\n\nEssa ação remove do MongoDB os registros vinculados a esse lote.`
+  );
+
+  if (!confirmar) return;
+
+  try {
+    if (status) {
+      status.textContent = `Excluindo importação ${importacaoId}...`;
+      status.className = 'import-status';
+    }
+
+    const response = await fetch(`${API_BASE}/api/importacoes/${encodeURIComponent(importacaoId)}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    const data = await response.json();
+
+    if (response.status === 401) {
+      sessionStorage.removeItem('adm_token');
+      admAtualizarUI();
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
+    if (!response.ok) {
+      throw new Error(data.erro || data.detalhe || 'Erro ao excluir importação.');
+    }
+
+    if (status) {
+      status.textContent = `${data.mensagem || 'Importação excluída'} · ${Number(data.registros_excluidos || 0).toLocaleString('pt-BR')} registros removidos.`;
+      status.className = 'import-status ok';
+    }
+
+    await carregarHistoricoImportacoes();
+
+  } catch (error) {
+    console.error(error);
+    if (status) {
+      status.textContent = `Erro ao excluir: ${error.message}`;
+      status.className = 'import-status err';
+    }
   }
 }
 
