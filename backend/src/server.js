@@ -125,52 +125,62 @@ async function iniciarServidor() {
     });
 
     // ─────────────────────────────────────
-    // DADOS TRATADOS (JOIN)
-    // ─────────────────────────────────────
-    app.get("/api/dados-tratados", async (req, res) => {
-      try {
-        const dados = await db.collection("dados_brutos").aggregate([
-          {
-            $lookup: {
-              from: "categorias_depara",
-              localField: "GTIN/PLU",
-              foreignField: "CODBARRAS",
-              as: "categoria_info"
-            }
+// DADOS TRATADOS (JOIN)
+// ─────────────────────────────────────
+app.get("/api/dados-tratados", async (req, res) => {
+  try {
+    const dados = await db.collection("dados_brutos").aggregate([
+      {
+        $lookup: {
+          from: "categorias_depara",
+          localField: "GTIN/PLU",
+          foreignField: "CODBARRAS",
+          as: "categoria_info"
+        }
+      },
+      {
+        $lookup: {
+          from: "lojas_depara",
+          localField: "Loja",
+          foreignField: "Cod_Loja",
+          as: "loja_info"
+        }
+      },
+      {
+        $addFields: {
+          Categoria_DePara: { $arrayElemAt: ["$categoria_info.CATEGORIA", 0] },
+          Familia_DePara: { $arrayElemAt: ["$categoria_info.FAMILIA", 0] },
+          Produto_DePara: {
+            $arrayElemAt: [
+              {
+                $map: {
+                  input: "$categoria_info",
+                  as: "cat",
+                  in: "$$cat.NOME PRODUTO"
+                }
+              },
+              0
+            ]
           },
-          {
-            $lookup: {
-              from: "lojas_depara",
-              localField: "Loja",
-              foreignField: "Cod_Loja",
-              as: "loja_info"
-            }
-          },
-          {
-            $addFields: {
-              Categoria_DePara: { $arrayElemAt: ["$categoria_info.CATEGORIA", 0] },
-              Familia_DePara: { $arrayElemAt: ["$categoria_info.FAMILIA", 0] },
-              Produto_DePara: { $arrayElemAt: ["$categoria_info.NOME PRODUTO", 0] },
-              Nome_Loja_DePara: { $arrayElemAt: ["$loja_info.Nome_Fantasia", 0] }
-            }
-          },
-          {
-            $project: {
-              categoria_info: 0,
-              loja_info: 0
-            }
-          }
-        ]).toArray();
-
-        res.json(dados);
-      } catch (error) {
-        res.status(500).json({
-          erro: "Erro ao buscar dados tratados",
-          detalhe: error.message
-        });
+          Nome_Loja_DePara: { $arrayElemAt: ["$loja_info.Nome_Fantasia", 0] }
+        }
+      },
+      {
+        $project: {
+          categoria_info: 0,
+          loja_info: 0
+        }
       }
-    });
+    ]).toArray();
 
+    res.json(dados);
+  } catch (error) {
+    res.status(500).json({
+      erro: "Erro ao buscar dados tratados",
+      detalhe: error.message
+    });
+  }
+});
     // ─────────────────────────────────────
     // IMPORTAÇÕES (PROTEGIDAS)
     // ─────────────────────────────────────
