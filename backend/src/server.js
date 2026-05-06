@@ -12,7 +12,9 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
-app.use(express.static(path.join(__dirname, "../../frontend")));
+const frontendPath = path.resolve(__dirname, "../../frontend");
+
+app.use(express.static(frontendPath));
 
 const PORT = process.env.PORT || 3000;
 const uri = process.env.MONGODB_URI;
@@ -73,7 +75,7 @@ async function iniciarServidor() {
     console.log(`📦 Banco em uso: ${dbName}`);
 
     app.get("/", (req, res) => {
-      res.sendFile(path.join(__dirname, "../../frontend/index.html"));
+      res.sendFile(path.join(frontendPath, "index.html"));
     });
 
     // ─────────────────────────────────────
