@@ -728,9 +728,10 @@
 
 <script>
 // ── CONFIGURAÇÃO ──────────────────────────────────────────────────────────────
-const API_BASE = '';
+const API_BASE = 'http://localhost:3000';
 
 let rawData      = [];
+let selloutData  = null;
 let deParaMap    = {};
 let catMap       = {};
 let familiaMap   = {};
@@ -964,11 +965,11 @@ function recarregarDados() {
 async function init() {
   try {
     
-    const [brutosRes, deParaRes, catRes, resumoRes] = await Promise.allSettled([
+    const [brutosRes, deParaRes, catRes, selloutRes] = await Promise.allSettled([
       fetchJSON('/api/dados-brutos?limite=5000'),
       fetchJSON('/api/lojas-depara'),
       fetchJSON('/api/categorias-depara'),
-      fetchJSON('/api/dashboard/resumo')
+      fetchJSON('/api/dashboard/sellout')
     ]);
 
     if (deParaRes.status === 'fulfilled') {
@@ -1025,16 +1026,14 @@ async function init() {
     const todas = Array.isArray(brutosRes.value) ? brutosRes.value : [];
     rawData = todas.filter(r => r && typeof r === 'object' && Object.keys(r).some(k => k !== '_id' && k !== 'importado_em' && r[k] !== null && r[k] !== ''));
 
-    if (resumoRes.status === 'fulfilled') {
-      const resumo = resumoRes.value || {};
+    if (selloutRes.status === 'fulfilled') {
+      selloutData = selloutRes.value;
+      const k = selloutData.kpis || {};
       document.getElementById('status-msg').textContent =
-        `${Number(resumo.total_vendido || 0).toLocaleString('pt-BR')} itens vendidos · ` +
-        `${Number(resumo.total_lojas || 0).toLocaleString('pt-BR')} lojas · ` +
-        `R$ ${Number(resumo.total_valor || 0).toLocaleString('pt-BR', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        })}`;
+        `${Number(k.total || 0).toLocaleString('pt-BR')} itens vendidos · ` +
+        `${Number(k.lojasAtivas || 0).toLocaleString('pt-BR')} lojas com venda · aba Sell Out otimizada`;
     } else {
+      console.warn('Sell Out otimizado não carregado:', selloutRes.reason?.message);
       document.getElementById('status-msg').textContent =
         `${rawData.length.toLocaleString('pt-BR')} registros carregados do MongoDB · ${Object.keys(deParaMap).length} lojas no de-para`;
     }
@@ -1127,34 +1126,52 @@ function ocultarEstado() {
 
 // ── FILTROS ───────────────────────────────────────────────────────────────────
 function construirFiltros() {
-  const anos  = [...new Set(rawData.map(r => col(r,'Ano')).filter(Boolean))].sort();
-  const meses = [...new Set(rawData.map(r => col(r,'Mês','Mes')).filter(Boolean))];
-  const ORD   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
-
-  const lojas = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(l => l && deParaMap[l]))].sort((a,b) => +a - +b);
-  const cats  = [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
-
   const sA = document.getElementById('f-ano');
   const sM = document.getElementById('f-mes');
   const sL = document.getElementById('f-loja');
   const sC = document.getElementById('f-cat');
   const sF = document.getElementById('f-familia');
 
-  const familias = [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
+  if (selloutData && selloutData.filtros) {
+    const filtros = selloutData.filtros;
+    const ORD = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
-  sA.innerHTML = '<option value="">Todos</option>' + anos.map(a => `<option>${a}</option>`).join('');
-  sM.innerHTML = '<option value="">Todos</option>' + meses.map(m => `<option>${m}</option>`).join('');
-  sL.innerHTML = '<option value="">Todas</option>' + lojas.map(l => {
-    const nome = deParaMap[l] || `Filial ${l}`;
-    return `<option value="${l}">#${l} · ${nome}</option>`;
-  }).join('');
-  sC.innerHTML = '<option value="">Todas</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
-  sF.innerHTML = '<option value="">Todas</option>' + familias.map(f => `<option value="${f}">${f}</option>`).join('');
+    const anos = [...(filtros.anos || [])].filter(Boolean).sort();
+    const meses = [...(filtros.meses || [])].filter(Boolean).sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
+    const lojas = [...(filtros.lojas || [])].filter(l => l && l.loja).sort((a,b) => Number(a.loja) - Number(b.loja));
+    const cats = [...(filtros.categorias || [])].filter(Boolean).sort();
+    const familias = [...(filtros.familias || [])].filter(Boolean).sort();
 
-  ['f-ano','f-mes','f-di','f-df','f-loja','f-cat','f-familia'].forEach(id =>
-    document.getElementById(id).addEventListener('change', renderizar)
-  );
+    sA.innerHTML = '<option value="">Todos</option>' + anos.map(a => `<option>${a}</option>`).join('');
+    sM.innerHTML = '<option value="">Todos</option>' + meses.map(m => `<option>${m}</option>`).join('');
+    sL.innerHTML = '<option value="">Todas</option>' + lojas.map(l => `<option value="${l.loja}">#${l.loja} · ${l.nome || ('Filial ' + l.loja)}</option>`).join('');
+    sC.innerHTML = '<option value="">Todas</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    sF.innerHTML = '<option value="">Todas</option>' + familias.map(f => `<option value="${f}">${f}</option>`).join('');
+  } else {
+    const anos  = [...new Set(rawData.map(r => col(r,'Ano')).filter(Boolean))].sort();
+    const meses = [...new Set(rawData.map(r => col(r,'Mês','Mes')).filter(Boolean))];
+    const ORD   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
+
+    const lojas = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(l => l && deParaMap[l]))].sort((a,b) => +a - +b);
+    const cats  = [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
+    const familias = [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
+
+    sA.innerHTML = '<option value="">Todos</option>' + anos.map(a => `<option>${a}</option>`).join('');
+    sM.innerHTML = '<option value="">Todos</option>' + meses.map(m => `<option>${m}</option>`).join('');
+    sL.innerHTML = '<option value="">Todas</option>' + lojas.map(l => {
+      const nome = deParaMap[l] || `Filial ${l}`;
+      return `<option value="${l}">#${l} · ${nome}</option>`;
+    }).join('');
+    sC.innerHTML = '<option value="">Todas</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    sF.innerHTML = '<option value="">Todas</option>' + familias.map(f => `<option value="${f}">${f}</option>`).join('');
+  }
+
+  ['f-ano','f-mes','f-di','f-df','f-loja','f-cat','f-familia'].forEach(id => {
+    const el = document.getElementById(id);
+    el.removeEventListener('change', renderizar);
+    el.addEventListener('change', renderizar);
+  });
 }
 
 function limparFiltros() {
@@ -1215,8 +1232,221 @@ function agruparPorLoja(data) {
   return Object.values(map).sort((a,b) => b.qty - a.qty);
 }
 
+// ── SELL OUT OTIMIZADO ───────────────────────────────────────────────────────
+function montarQuerySellout() {
+  const params = new URLSearchParams();
+
+  const mapa = [
+    ['ano', 'f-ano'],
+    ['mes', 'f-mes'],
+    ['loja', 'f-loja'],
+    ['categoria', 'f-cat'],
+    ['familia', 'f-familia'],
+    ['dataInicio', 'f-di'],
+    ['dataFim', 'f-df'],
+  ];
+
+  mapa.forEach(([nome, id]) => {
+    const el = document.getElementById(id);
+    if (el && el.value) params.set(nome, el.value);
+  });
+
+  if (f_active.val) {
+    params.set('activeDim', f_active.dim);
+    params.set('activeVal', f_active.val);
+  }
+
+  const query = params.toString();
+  return query ? `/api/dashboard/sellout?${query}` : '/api/dashboard/sellout';
+}
+
+function renderKPIsSellout(kpis) {
+  document.getElementById('kpi-total').textContent = Number(kpis.total || 0).toLocaleString('pt-BR');
+  document.getElementById('kpi-lojas').textContent = Number(kpis.lojasAtivas || 0).toLocaleString('pt-BR');
+  document.getElementById('kpi-top').textContent = kpis.topNome || '—';
+  document.getElementById('kpi-top-sub').textContent = kpis.topNome ? `${Number(kpis.topQtd || 0).toLocaleString('pt-BR')} un.` : '—';
+}
+
+function renderCat1Agregado(byCat) {
+  byCat = Array.isArray(byCat) ? [...byCat] : [];
+  const total = byCat.reduce((s,r) => s + Number(r.qty || 0), 0);
+
+  const ano = document.getElementById('f-ano').value;
+  const mes = document.getElementById('f-mes').value;
+  document.getElementById('cat1-sub').textContent = [ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos';
+
+  const state = document.getElementById('cat1-state');
+  if (byCat.length === 0) { if(state) { state.style.display='flex'; state.innerHTML='Nenhum dado.'; } return; }
+  if (state) state.style.display = 'none';
+
+  byCat = byCat.sort((a,b) => {
+    let va, vb;
+    if (cat1Sort.col === 'cat') { va = String(a.cat || '').toLowerCase(); vb = String(b.cat || '').toLowerCase(); }
+    else if (cat1Sort.col === 'pct') { va = total > 0 ? Number(a.qty || 0) / total : 0; vb = total > 0 ? Number(b.qty || 0) / total : 0; }
+    else { va = Number(a.qty || 0); vb = Number(b.qty || 0); }
+    if (va < vb) return cat1Sort.dir === 'asc' ? -1 : 1;
+    if (va > vb) return cat1Sort.dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  let canvas = document.getElementById('cat1-canvas');
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.id = 'cat1-canvas';
+    document.getElementById('cat1-wrap').appendChild(canvas);
+  }
+  if (cat1Chart) cat1Chart.destroy();
+
+  const selCat = f_active.dim === 'cat' ? f_active.val : null;
+  cat1Chart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: byCat.map(r => r.cat),
+      datasets: [{
+        data: byCat.map(r => Number(r.qty || 0)),
+        backgroundColor: byCat.map((r,i) => selCat ? (r.cat===selCat ? PALETTE[i%PALETTE.length]+'ee' : 'rgba(37,42,58,0.45)') : PALETTE[i%PALETTE.length]+'cc'),
+        borderColor:     byCat.map((r,i) => selCat ? (r.cat===selCat ? PALETTE[i%PALETTE.length] : 'rgba(37,42,58,0.2)') : PALETTE[i%PALETTE.length]),
+        borderWidth: 1.5, borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      onClick: (evt, elements) => {
+        if (elements.length > 0) fSetFilter('cat', byCat[elements[0].index].cat);
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#1c2030', borderColor:'#252a3a', borderWidth:1,
+          titleColor:'#c8f135', bodyColor:'#e8ecf5',
+          titleFont:{family:'DM Mono',size:11}, bodyFont:{family:'Figtree',size:13}, padding:14,
+          callbacks: { label: ctx => ` ${ctx.parsed.y.toLocaleString('pt-BR')} unidades` }
+        }
+      },
+      scales: {
+        x: { ticks:{ color: ctx => selCat ? (byCat[ctx.index]?.cat===selCat ? '#c8f135':'#3a4060') : '#8891aa', font:{family:'DM Mono',size:9}, maxRotation:35, autoSkip:false }, grid:{color:'#1c2030'} },
+        y: { ticks:{ color:'#8891aa', font:{family:'DM Mono',size:11}, callback:v=>v.toLocaleString('pt-BR') }, grid:{color:'#252a3a'} }
+      }
+    }
+  });
+  canvas.style.cursor = 'pointer';
+
+  const maxQ = Math.max(...byCat.map(r => Number(r.qty || 0)), 1);
+  const th = (label, key) => {
+    const cls = cat1Sort.col === key ? ` class="sort-${cat1Sort.dir}"` : '';
+    return `<th${cls} onclick="cat1OrdenarPor('${key}')">${label}</th>`;
+  };
+  const linhas = byCat.map(r => {
+    const qty = Number(r.qty || 0);
+    const pct  = total > 0 ? ((qty/total)*100).toFixed(1) : 0;
+    const barW = ((qty/maxQ)*100).toFixed(1);
+    const ativo = selCat === r.cat ? ' row-active' : '';
+    return `<tr class="clickable-row${ativo}" onclick="fSetFilter('cat',this.dataset.v)" data-v="${String(r.cat).replace(/"/g,'&quot;')}">
+      <td class="td-nome">${r.cat}</td>
+      <td class="td-qty">${qty.toLocaleString('pt-BR')}</td>
+      <td><div class="td-bar-wrap">
+        <div class="td-bar" style="width:${barW}%;max-width:150px"></div>
+        <span style="font-size:.78rem;color:var(--text-dim);font-family:'DM Mono',monospace">${pct}%</span>
+      </div></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('cat1-table-body').innerHTML = `<table>
+    <thead><tr>${th('Categoria','cat')}${th('Qtd Vendida','qty')}${th('Participação','pct')}</tr></thead>
+    <tbody>${linhas}</tbody>
+  </table>`;
+}
+
+function renderFam1Agregado(byFam) {
+  byFam = Array.isArray(byFam) ? [...byFam] : [];
+  const total = byFam.reduce((s,r) => s + Number(r.qty || 0), 0);
+
+  const ano = document.getElementById('f-ano').value;
+  const mes = document.getElementById('f-mes').value;
+  document.getElementById('fam1-sub').textContent = [ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos';
+
+  const state = document.getElementById('fam1-state');
+  if (byFam.length === 0) { if(state) { state.style.display='flex'; state.innerHTML='Nenhum dado.'; } return; }
+  if (state) state.style.display = 'none';
+
+  byFam = byFam.sort((a,b) => {
+    let va, vb;
+    if (fam1Sort.col === 'fam') { va = String(a.fam || '').toLowerCase(); vb = String(b.fam || '').toLowerCase(); }
+    else if (fam1Sort.col === 'pct') { va = total > 0 ? Number(a.qty || 0) / total : 0; vb = total > 0 ? Number(b.qty || 0) / total : 0; }
+    else { va = Number(a.qty || 0); vb = Number(b.qty || 0); }
+    if (va < vb) return fam1Sort.dir === 'asc' ? -1 : 1;
+    if (va > vb) return fam1Sort.dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  let canvas = document.getElementById('fam1-canvas');
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.id = 'fam1-canvas';
+    document.getElementById('fam1-wrap').appendChild(canvas);
+  }
+  if (fam1Chart) fam1Chart.destroy();
+
+  const selFam = f_active.dim === 'familia' ? f_active.val : null;
+  fam1Chart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: byFam.map(r => r.fam),
+      datasets: [{
+        data: byFam.map(r => Number(r.qty || 0)),
+        backgroundColor: byFam.map((r,i) => selFam ? (r.fam===selFam ? PALETTE[i%PALETTE.length]+'ee' : 'rgba(37,42,58,0.45)') : PALETTE[i%PALETTE.length]+'cc'),
+        borderColor:     byFam.map((r,i) => selFam ? (r.fam===selFam ? PALETTE[i%PALETTE.length] : 'rgba(37,42,58,0.2)') : PALETTE[i%PALETTE.length]),
+        borderWidth: 1.5, borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      onClick: (evt, elements) => {
+        if (elements.length > 0) fSetFilter('familia', byFam[elements[0].index].fam);
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor:'#1c2030', borderColor:'#252a3a', borderWidth:1,
+          titleColor:'#c8f135', bodyColor:'#e8ecf5',
+          titleFont:{family:'DM Mono',size:11}, bodyFont:{family:'Figtree',size:13}, padding:14,
+          callbacks: { label: ctx => ` ${ctx.parsed.y.toLocaleString('pt-BR')} unidades` }
+        }
+      },
+      scales: {
+        x: { ticks:{ color: ctx => selFam ? (byFam[ctx.index]?.fam===selFam ? '#c8f135':'#3a4060') : '#8891aa', font:{family:'DM Mono',size:9}, maxRotation:35, autoSkip:false }, grid:{color:'#1c2030'} },
+        y: { ticks:{ color:'#8891aa', font:{family:'DM Mono',size:11}, callback:v=>v.toLocaleString('pt-BR') }, grid:{color:'#252a3a'} }
+      }
+    }
+  });
+  canvas.style.cursor = 'pointer';
+
+  const maxQ = Math.max(...byFam.map(r => Number(r.qty || 0)), 1);
+  const th = (label, key) => {
+    const cls = fam1Sort.col === key ? ` class="sort-${fam1Sort.dir}"` : '';
+    return `<th${cls} onclick="fam1OrdenarPor('${key}')">${label}</th>`;
+  };
+  const linhas = byFam.map(r => {
+    const qty = Number(r.qty || 0);
+    const pct  = total > 0 ? ((qty/total)*100).toFixed(1) : 0;
+    const barW = ((qty/maxQ)*100).toFixed(1);
+    const ativo = selFam === r.fam ? ' row-active' : '';
+    return `<tr class="clickable-row${ativo}" onclick="fSetFilter('familia',this.dataset.v)" data-v="${String(r.fam).replace(/"/g,'&quot;')}">
+      <td class="td-nome">${r.fam}</td>
+      <td class="td-qty">${qty.toLocaleString('pt-BR')}</td>
+      <td><div class="td-bar-wrap">
+        <div class="td-bar" style="width:${barW}%;max-width:150px"></div>
+        <span style="font-size:.78rem;color:var(--text-dim);font-family:'DM Mono',monospace">${pct}%</span>
+      </div></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('fam1-table-body').innerHTML = `<table>
+    <thead><tr>${th('Família','fam')}${th('Qtd Vendida','qty')}${th('Participação','pct')}</tr></thead>
+    <tbody>${linhas}</tbody>
+  </table>`;
+}
+
 // ── RENDER PRINCIPAL ──────────────────────────────────────────────────────────
-function renderizar() {
+async function renderizar() {
   mostrarBanner('f-active-banner', f_active,
     {loja:'FILIAL', cat:'CATEGORIA', familia:'FAMÍLIA'}, 'fLimparAtivo');
 
@@ -1226,16 +1456,50 @@ function renderizar() {
     [ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos';
   document.getElementById('loja-ativa').style.display = 'none';
 
-  // Gráficos/tabelas da dimensão selecionada mantêm todas as linhas visíveis e destacam a linha ativa.
-  // KPIs e demais visuais recebem o filtro ativo normalmente.
-  const byLojaChart = agruparPorLoja(filtrar('loja'));
-  const byLojaFull  = agruparPorLoja(filtrar());
+  try {
+    const dados = await fetchJSON(montarQuerySellout());
+    selloutData = dados;
 
-  renderKPIs(byLojaFull);
-  renderGrafico(byLojaChart);
-  renderTabela(byLojaChart);
-  renderCat1(filtrar('cat'));
-  renderFam1(filtrar('familia'));
+    if (dados && dados.filtros) {
+      const valoresAtuais = {
+        ano: document.getElementById('f-ano').value,
+        mes: document.getElementById('f-mes').value,
+        loja: document.getElementById('f-loja').value,
+        cat: document.getElementById('f-cat').value,
+        familia: document.getElementById('f-familia').value,
+        di: document.getElementById('f-di').value,
+        df: document.getElementById('f-df').value,
+      };
+      construirFiltros();
+      document.getElementById('f-ano').value = valoresAtuais.ano;
+      document.getElementById('f-mes').value = valoresAtuais.mes;
+      document.getElementById('f-loja').value = valoresAtuais.loja;
+      document.getElementById('f-cat').value = valoresAtuais.cat;
+      document.getElementById('f-familia').value = valoresAtuais.familia;
+      document.getElementById('f-di').value = valoresAtuais.di;
+      document.getElementById('f-df').value = valoresAtuais.df;
+    }
+
+    renderKPIsSellout(dados.kpis || {});
+    renderGrafico(dados.porLoja || []);
+    renderTabela(dados.porLoja || []);
+    renderCat1Agregado(dados.categorias || []);
+    renderFam1Agregado(dados.familias || []);
+
+    document.getElementById('status-msg').textContent =
+      `${Number(dados.kpis?.total || 0).toLocaleString('pt-BR')} itens vendidos · ` +
+      `${Number(dados.kpis?.lojasAtivas || 0).toLocaleString('pt-BR')} lojas com venda · Sell Out otimizado`;
+  } catch (err) {
+    console.warn('Falha no Sell Out otimizado, usando dados locais:', err.message);
+    const byLojaChart = agruparPorLoja(filtrar('loja'));
+    const byLojaFull  = agruparPorLoja(filtrar());
+
+    renderKPIs(byLojaFull);
+    renderGrafico(byLojaChart);
+    renderTabela(byLojaChart);
+    renderCat1(filtrar('cat'));
+    renderFam1(filtrar('familia'));
+  }
 }
 
 function renderKPIs(byLoja) {

@@ -1,497 +1,325 @@
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const { MongoClient } = require("mongodb");
-const multer = require("multer");
-const csv = require("csv-parser");
-const fs = require("fs");
-const path = require("path");
-const crypto = require("crypto");
-require("dotenv").config();
 
 const app = express();
 
 app.use(cors());
-app.use(express.json({ limit: "50mb" }));
-const frontendPath = path.resolve(__dirname, "../../frontend");
+app.use(express.json());
 
-app.use(express.static(frontendPath));
+// ======================================================
+// CONFIG
+// ======================================================
 
 const PORT = process.env.PORT || 3000;
-const uri = process.env.MONGODB_URI;
-const dbName = process.env.DB_NAME || "soneda_dashboard";
 
-const client = new MongoClient(uri);
+const MONGO_URI = process.env.MONGO_URI;
+const DB_NAME = process.env.DB_NAME || "soneda";
+const COLLECTION_NAME = process.env.COLLECTION_NAME || "dados";
 
-// ─────────────────────────────────────────
-// UPLOAD
-// ─────────────────────────────────────────
-const upload = multer({ dest: "uploads/" });
-
-// ─────────────────────────────────────────
-// AUTH (LOGIN ADM)
-// ─────────────────────────────────────────
-const sessoes = new Map();
-const TOKEN_EXPIRY_MS = 8 * 60 * 60 * 1000;
-
-function gerarToken() {
-  return crypto.randomBytes(32).toString("hex");
+if (!MONGO_URI) {
+  console.error("❌ MONGO_URI não definida.");
+  process.exit(1);
 }
 
-function verificarToken(req, res, next) {
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+// ======================================================
+// MONGO
+// ======================================================
 
-  if (!token || !sessoes.has(token)) {
-    return res.status(401).json({ erro: "Não autorizado." });
-  }
+let db;
+let collection;
 
-  const sessao = sessoes.get(token);
-
-  if (Date.now() > sessao.expira) {
-    sessoes.delete(token);
-    return res.status(401).json({ erro: "Sessão expirada." });
-  }
-
-  next();
-}
-
-// ─────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────
-function limparValor(valor) {
-  if (valor === undefined || valor === null) return "";
-  return String(valor).trim();
-}
-
-// ─────────────────────────────────────────
-// SERVIDOR
-// ─────────────────────────────────────────
-async function iniciarServidor() {
+async function conectarMongo() {
   try {
+    const client = new MongoClient(MONGO_URI);
+
     await client.connect();
-    const db = client.db(dbName);
 
-    console.log("✅ Conectado ao MongoDB");
-    console.log(`📦 Banco em uso: ${dbName}`);
+    db = client.db(DB_NAME);
+    collection = db.collection(COLLECTION_NAME);
 
-    app.get("/", (req, res) => {
-      res.sendFile(path.join(frontendPath, "index.html"));
-    });
-
-    // ─────────────────────────────────────
-    // LOGIN / LOGOUT
-    // ─────────────────────────────────────
-    app.post("/api/login", (req, res) => {
-      const { usuario, senha } = req.body;
-
-      if (
-        usuario === process.env.ADMIN_USER &&
-        senha === process.env.ADMIN_PASSWORD
-      ) {
-        const token = gerarToken();
-        sessoes.set(token, { expira: Date.now() + TOKEN_EXPIRY_MS });
-
-        return res.json({ token });
-      }
-
-      res.status(401).json({ erro: "Usuário ou senha inválidos." });
-    });
-
-    app.post("/api/logout", (req, res) => {
-      const auth = req.headers.authorization || "";
-      const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
-
-      if (token) sessoes.delete(token);
-
-      res.json({ ok: true });
-    });
-
-    // ─────────────────────────────────────
-    // CONSULTAS
-    // ─────────────────────────────────────
-    app.get("/api/dados-brutos", async (req, res) => {
-      try {
-        const limite = Number(req.query.limite || 5000);
-
-        const dados = await db
-          .collection("dados_brutos")
-          .find({})
-          .limit(limite)
-          .toArray();
-
-        res.json(dados);
-      } catch (error) {
-        res.status(500).json({
-          erro: "Erro ao buscar dados brutos",
-          detalhe: error.message
-        });
-      }
-    });
-
-    app.get("/api/lojas-depara", async (req, res) => {
-      const dados = await db.collection("lojas_depara").find({}).toArray();
-      res.json(dados);
-    });
-
-    app.get("/api/categorias-depara", async (req, res) => {
-      const dados = await db.collection("categorias_depara").find({}).toArray();
-      res.json(dados);
-    });
-
-    // ─────────────────────────────────────
-    // DADOS TRATADOS (JOIN)
-    // ─────────────────────────────────────
-    app.get("/api/dados-tratados", async (req, res) => {
-      try {
-        const dados = await db.collection("dados_brutos").aggregate([
-          {
-            $lookup: {
-              from: "categorias_depara",
-              localField: "GTIN/PLU",
-              foreignField: "CODBARRAS",
-              as: "categoria_info"
-            }
-          },
-          {
-            $lookup: {
-              from: "lojas_depara",
-              localField: "Loja",
-              foreignField: "Cod_Loja",
-              as: "loja_info"
-            }
-          },
-          {
-            $addFields: {
-              Categoria_DePara: { $arrayElemAt: ["$categoria_info.CATEGORIA", 0] },
-              Familia_DePara: { $arrayElemAt: ["$categoria_info.FAMILIA", 0] },
-              Produto_DePara: {
-                $arrayElemAt: [
-                  {
-                    $map: {
-                      input: "$categoria_info",
-                      as: "cat",
-                      in: {
-                        $getField: {
-                          field: "NOME PRODUTO",
-                          input: "$$cat"
-                        }
-                      }
-                    }
-                  },
-                  0
-                ]
-              },
-              Nome_Loja_DePara: { $arrayElemAt: ["$loja_info.Nome_Fantasia", 0] }
-            }
-          },
-          {
-            $project: {
-              categoria_info: 0,
-              loja_info: 0
-            }
-          }
-        ]).toArray();
-
-        res.json(dados);
-      } catch (error) {
-        res.status(500).json({
-          erro: "Erro ao buscar dados tratados",
-          detalhe: error.message
-        });
-      }
-    });
-
-    // ─────────────────────────────────────
-    // RESUMO DASHBOARD
-    // ─────────────────────────────────────
-    app.get("/api/dashboard/resumo", async (req, res) => {
-      try {
-        const pipeline = [
-          {
-            $group: {
-              _id: null,
-
-              total_vendido: {
-                $sum: {
-                  $toDouble: {
-                    $ifNull: ["$Venda Pdv Quantidade", 0]
-                  }
-                }
-              },
-
-              total_valor: {
-                $sum: {
-                  $toDouble: {
-                    $ifNull: ["$Venda Pdv Valor", 0]
-                  }
-                }
-              },
-
-              lojas: {
-                $addToSet: "$Loja"
-              }
-            }
-          },
-          {
-            $project: {
-              _id: 0,
-              total_vendido: 1,
-              total_valor: 1,
-              total_lojas: {
-                $size: "$lojas"
-              }
-            }
-          }
-        ];
-
-        const resultado = await db
-          .collection("dados_brutos")
-          .aggregate(pipeline)
-          .toArray();
-
-        res.json(
-          resultado[0] || {
-            total_vendido: 0,
-            total_valor: 0,
-            total_lojas: 0
-          }
-        );
-
-      } catch (error) {
-        res.status(500).json({
-          erro: "Erro ao gerar resumo",
-          detalhe: error.message
-        });
-      }
-    });
-
-    // ─────────────────────────────────────
-    // VENDAS POR FILIAL
-    // ─────────────────────────────────────
-    app.get("/api/dashboard/vendas-por-filial", async (req, res) => {
-      try {
-        const resultado = await db.collection("dados_brutos").aggregate([
-          {
-            $group: {
-              _id: "$Loja",
-              total_venda: {
-                $sum: {
-                  $toDouble: {
-                    $ifNull: ["$Venda Pdv Valor", 0]
-                  }
-                }
-              }
-            }
-          },
-          {
-            $sort: {
-              total_venda: -1
-            }
-          },
-          {
-            $limit: 20
-          }
-        ]).toArray();
-
-        res.json(resultado);
-      } catch (error) {
-        res.status(500).json({
-          erro: "Erro ao buscar vendas por filial",
-          detalhe: error.message
-        });
-      }
-    });
-
-    // ─────────────────────────────────────
-    // CATEGORIAS
-    // ─────────────────────────────────────
-    app.get("/api/dashboard/categorias", async (req, res) => {
-      try {
-        const resultado = await db.collection("categorias_depara").aggregate([
-          {
-            $group: {
-              _id: "$CATEGORIA",
-              total: { $sum: 1 }
-            }
-          },
-          {
-            $sort: {
-              total: -1
-            }
-          }
-        ]).toArray();
-
-        res.json(resultado);
-      } catch (error) {
-        res.status(500).json({
-          erro: "Erro ao buscar categorias",
-          detalhe: error.message
-        });
-      }
-    });
-
-    // ─────────────────────────────────────
-    // FAMÍLIAS
-    // ─────────────────────────────────────
-    app.get("/api/dashboard/familias", async (req, res) => {
-      try {
-        const resultado = await db.collection("categorias_depara").aggregate([
-          {
-            $group: {
-              _id: "$FAMILIA",
-              total: { $sum: 1 }
-            }
-          },
-          {
-            $sort: {
-              total: -1
-            }
-          }
-        ]).toArray();
-
-        res.json(resultado);
-      } catch (error) {
-        res.status(500).json({
-          erro: "Erro ao buscar famílias",
-          detalhe: error.message
-        });
-      }
-    });
-
-    // ─────────────────────────────────────
-    // VENDAS POR DIA
-    // ─────────────────────────────────────
-    app.get("/api/dashboard/vendas-por-dia", async (req, res) => {
-      try {
-        const resultado = await db.collection("dados_brutos").aggregate([
-          {
-            $group: {
-              _id: "$Data",
-              total_venda: {
-                $sum: {
-                  $toDouble: {
-                    $ifNull: ["$Venda Pdv Valor", 0]
-                  }
-                }
-              }
-            }
-          },
-          {
-            $sort: {
-              _id: 1
-            }
-          }
-        ]).toArray();
-
-        res.json(resultado);
-      } catch (error) {
-        res.status(500).json({
-          erro: "Erro ao buscar vendas por dia",
-          detalhe: error.message
-        });
-      }
-    });
-
-    // ─────────────────────────────────────
-    // IMPORTAÇÕES (PROTEGIDAS)
-    // ─────────────────────────────────────
-    app.post(
-      "/api/importar/dados-brutos",
-      verificarToken,
-      upload.single("file"),
-      async (req, res) => {
-        const resultados = [];
-
-        if (!req.file) {
-          return res.status(400).json({ erro: "Nenhum arquivo enviado." });
-        }
-
-        fs.createReadStream(req.file.path)
-          .pipe(csv({ separator: ";" }))
-          .on("data", (linha) => {
-            const registro = {};
-
-            Object.keys(linha).forEach((coluna) => {
-              const nomeColuna = limparValor(coluna);
-              registro[nomeColuna] = limparValor(linha[coluna]);
-            });
-
-            registro.importado_em = new Date();
-            resultados.push(registro);
-          })
-          .on("end", async () => {
-            if (resultados.length > 0) {
-              await db.collection("dados_brutos").insertMany(resultados);
-            }
-
-            fs.unlinkSync(req.file.path);
-
-            res.json({
-              mensagem: "Importação realizada 🚀",
-              total: resultados.length
-            });
-          });
-      }
-    );
-
-    app.post(
-      "/api/importar/categorias-depara",
-      verificarToken,
-      upload.single("file"),
-      async (req, res) => {
-        const resultados = [];
-
-        fs.createReadStream(req.file.path)
-          .pipe(csv({ separator: ";" }))
-          .on("data", (linha) => {
-            const registro = {};
-            Object.keys(linha).forEach((coluna) => {
-              registro[coluna.trim()] = linha[coluna].trim();
-            });
-            resultados.push(registro);
-          })
-          .on("end", async () => {
-            await db.collection("categorias_depara").deleteMany({});
-            await db.collection("categorias_depara").insertMany(resultados);
-
-            res.json({ mensagem: "Categorias importadas" });
-          });
-      }
-    );
-
-    app.post(
-      "/api/importar/lojas-depara",
-      verificarToken,
-      upload.single("file"),
-      async (req, res) => {
-        const resultados = [];
-
-        fs.createReadStream(req.file.path)
-          .pipe(csv({ separator: ";" }))
-          .on("data", (linha) => {
-            const registro = {};
-            Object.keys(linha).forEach((coluna) => {
-              registro[coluna.trim()] = linha[coluna].trim();
-            });
-            resultados.push(registro);
-          })
-          .on("end", async () => {
-            await db.collection("lojas_depara").deleteMany({});
-            await db.collection("lojas_depara").insertMany(resultados);
-
-            res.json({ mensagem: "Lojas importadas" });
-          });
-      }
-    );
-
-    // ─────────────────────────────────────
-    app.listen(PORT, () => {
-      console.log(`🚀 Servidor rodando na porta ${PORT}`);
-    });
-
-  } catch (erro) {
-    console.error("❌ Erro ao iniciar servidor:", erro);
+    console.log("✅ MongoDB conectado");
+  } catch (err) {
+    console.error("❌ Erro ao conectar MongoDB:", err);
+    process.exit(1);
   }
 }
 
-iniciarServidor();
+conectarMongo();
+
+// ======================================================
+// HEALTHCHECK
+// ======================================================
+
+app.get("/", (req, res) => {
+  res.json({
+    status: "ok",
+    api: "Soneda Dashboard MongoDB",
+  });
+});
+
+// ======================================================
+// DADOS BRUTOS OTIMIZADO
+// ======================================================
+
+app.get("/api/dados-brutos", async (req, res) => {
+  try {
+    const limite = Number(req.query.limite || 5000);
+
+    const dados = await collection
+      .find({})
+      .limit(limite)
+      .toArray();
+
+    res.json(dados);
+  } catch (err) {
+    console.error("❌ Erro /api/dados-brutos:", err);
+
+    res.status(500).json({
+      erro: "Erro ao buscar dados",
+    });
+  }
+});
+
+// ======================================================
+// RESUMO DASHBOARD
+// ======================================================
+
+app.get("/api/dashboard/resumo", async (req, res) => {
+  try {
+    const pipeline = [
+      {
+        $group: {
+          _id: null,
+
+          total_vendido: {
+            $sum: {
+              $ifNull: ["$Venda (Qtd)", 0],
+            },
+          },
+
+          total_valor: {
+            $sum: {
+              $ifNull: ["$Venda (R$)", 0],
+            },
+          },
+
+          lojas: {
+            $addToSet: "$Loja",
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+
+          total_vendido: 1,
+
+          total_valor: 1,
+
+          total_lojas: {
+            $size: "$lojas",
+          },
+        },
+      },
+    ];
+
+    const resultado = await collection.aggregate(pipeline).toArray();
+
+    res.json(
+      resultado[0] || {
+        total_vendido: 0,
+        total_valor: 0,
+        total_lojas: 0,
+      }
+    );
+  } catch (err) {
+    console.error("❌ Erro /api/dashboard/resumo:", err);
+
+    res.status(500).json({
+      erro: "Erro ao gerar resumo",
+    });
+  }
+});
+
+// ======================================================
+// SELL OUT OTIMIZADO
+// ======================================================
+
+app.get("/api/vendas-sellout", async (req, res) => {
+  try {
+    const {
+      dataInicio,
+      dataFim,
+      loja,
+      categoria,
+      limite,
+    } = req.query;
+
+    let filtro = {};
+
+    // ------------------------------------------
+    // FILTRO DATA
+    // ------------------------------------------
+
+    if (dataInicio || dataFim) {
+      filtro["Data"] = {};
+
+      if (dataInicio) {
+        filtro["Data"]["$gte"] = dataInicio;
+      }
+
+      if (dataFim) {
+        filtro["Data"]["$lte"] = dataFim;
+      }
+    }
+
+    // ------------------------------------------
+    // FILTRO LOJA
+    // ------------------------------------------
+
+    if (loja) {
+      filtro["Loja"] = loja;
+    }
+
+    // ------------------------------------------
+    // FILTRO CATEGORIA
+    // ------------------------------------------
+
+    if (categoria) {
+      filtro["Categoria"] = categoria;
+    }
+
+    // ------------------------------------------
+    // LIMITE
+    // ------------------------------------------
+
+    const maxLimite = Number(limite || 1000);
+
+    // ------------------------------------------
+    // QUERY
+    // ------------------------------------------
+
+    const dados = await collection
+      .find(filtro)
+      .project({
+        _id: 0,
+      })
+      .limit(maxLimite)
+      .toArray();
+
+    res.json(dados);
+  } catch (err) {
+    console.error("❌ Erro /api/vendas-sellout:", err);
+
+    res.status(500).json({
+      erro: "Erro ao carregar sell out",
+    });
+  }
+});
+
+// ======================================================
+// SELL OUT AGRUPADO
+// ======================================================
+
+app.get("/api/vendas-sellout/resumo", async (req, res) => {
+  try {
+    const pipeline = [
+      {
+        $group: {
+          _id: "$Categoria",
+
+          quantidade: {
+            $sum: {
+              $ifNull: ["$Venda (Qtd)", 0],
+            },
+          },
+
+          valor: {
+            $sum: {
+              $ifNull: ["$Venda (R$)", 0],
+            },
+          },
+        },
+      },
+
+      {
+        $sort: {
+          valor: -1,
+        },
+      },
+
+      {
+        $limit: 20,
+      },
+    ];
+
+    const resultado = await collection.aggregate(pipeline).toArray();
+
+    res.json(resultado);
+  } catch (err) {
+    console.error("❌ Erro /api/vendas-sellout/resumo:", err);
+
+    res.status(500).json({
+      erro: "Erro resumo sell out",
+    });
+  }
+});
+
+// ======================================================
+// TOP PRODUTOS
+// ======================================================
+
+app.get("/api/top-produtos", async (req, res) => {
+  try {
+    const pipeline = [
+      {
+        $group: {
+          _id: "$Produto",
+
+          quantidade: {
+            $sum: {
+              $ifNull: ["$Venda (Qtd)", 0],
+            },
+          },
+
+          valor: {
+            $sum: {
+              $ifNull: ["$Venda (R$)", 0],
+            },
+          },
+        },
+      },
+
+      {
+        $sort: {
+          valor: -1,
+        },
+      },
+
+      {
+        $limit: 30,
+      },
+    ];
+
+    const resultado = await collection.aggregate(pipeline).toArray();
+
+    res.json(resultado);
+  } catch (err) {
+    console.error("❌ Erro /api/top-produtos:", err);
+
+    res.status(500).json({
+      erro: "Erro top produtos",
+    });
+  }
+});
+
+// ======================================================
+// INICIAR
+// ======================================================
+
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+});
