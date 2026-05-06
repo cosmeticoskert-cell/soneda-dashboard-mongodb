@@ -3,16 +3,11 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { MongoClient } = require("mongodb");
-const path = require("path");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
-
-// SERVIR FRONTEND
-const frontendPath = path.resolve(__dirname, "../../frontend");
-app.use(express.static(frontendPath));
 
 // CONFIG
 const PORT = process.env.PORT || 3000;
@@ -48,6 +43,13 @@ async function conectarMongo() {
 conectarMongo();
 
 // HEALTHCHECK
+app.get("/", (req, res) => {
+  res.json({
+    status: "ok",
+    api: "Soneda Dashboard MongoDB",
+  });
+});
+
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
@@ -188,11 +190,6 @@ app.get("/api/vendas-sellout", async (req, res) => {
       detalhe: err.message,
     });
   }
-});
-
-// FRONTEND COMO ROTA FINAL
-app.use((req, res) => {
-  res.sendFile(path.join(frontendPath, "index.html"));
 });
 
 // INICIAR
