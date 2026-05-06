@@ -266,6 +266,133 @@ async function iniciarServidor() {
     });
 
     // ─────────────────────────────────────
+    // VENDAS POR FILIAL
+    // ─────────────────────────────────────
+    app.get("/api/dashboard/vendas-por-filial", async (req, res) => {
+      try {
+        const resultado = await db.collection("dados_brutos").aggregate([
+          {
+            $group: {
+              _id: "$Loja",
+              total_venda: {
+                $sum: {
+                  $toDouble: {
+                    $ifNull: ["$Venda Pdv Valor", 0]
+                  }
+                }
+              }
+            }
+          },
+          {
+            $sort: {
+              total_venda: -1
+            }
+          },
+          {
+            $limit: 20
+          }
+        ]).toArray();
+
+        res.json(resultado);
+      } catch (error) {
+        res.status(500).json({
+          erro: "Erro ao buscar vendas por filial",
+          detalhe: error.message
+        });
+      }
+    });
+
+    // ─────────────────────────────────────
+    // CATEGORIAS
+    // ─────────────────────────────────────
+    app.get("/api/dashboard/categorias", async (req, res) => {
+      try {
+        const resultado = await db.collection("categorias_depara").aggregate([
+          {
+            $group: {
+              _id: "$CATEGORIA",
+              total: { $sum: 1 }
+            }
+          },
+          {
+            $sort: {
+              total: -1
+            }
+          }
+        ]).toArray();
+
+        res.json(resultado);
+      } catch (error) {
+        res.status(500).json({
+          erro: "Erro ao buscar categorias",
+          detalhe: error.message
+        });
+      }
+    });
+
+    // ─────────────────────────────────────
+    // FAMÍLIAS
+    // ─────────────────────────────────────
+    app.get("/api/dashboard/familias", async (req, res) => {
+      try {
+        const resultado = await db.collection("categorias_depara").aggregate([
+          {
+            $group: {
+              _id: "$FAMILIA",
+              total: { $sum: 1 }
+            }
+          },
+          {
+            $sort: {
+              total: -1
+            }
+          }
+        ]).toArray();
+
+        res.json(resultado);
+      } catch (error) {
+        res.status(500).json({
+          erro: "Erro ao buscar famílias",
+          detalhe: error.message
+        });
+      }
+    });
+
+    // ─────────────────────────────────────
+    // VENDAS POR DIA
+    // ─────────────────────────────────────
+    app.get("/api/dashboard/vendas-por-dia", async (req, res) => {
+      try {
+        const resultado = await db.collection("dados_brutos").aggregate([
+          {
+            $group: {
+              _id: "$Data",
+              total_venda: {
+                $sum: {
+                  $toDouble: {
+                    $ifNull: ["$Venda Pdv Valor", 0]
+                  }
+                }
+              }
+            }
+          },
+          {
+            $sort: {
+              _id: 1
+            }
+          }
+        ]).toArray();
+
+        res.json(resultado);
+      } catch (error) {
+        res.status(500).json({
+          erro: "Erro ao buscar vendas por dia",
+          detalhe: error.message
+        });
+      }
+    });
+
+    // ─────────────────────────────────────
     // IMPORTAÇÕES (PROTEGIDAS)
     // ─────────────────────────────────────
     app.post(
