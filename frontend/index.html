@@ -511,6 +511,7 @@
       <button class="gu-subtab-btn active" onclick="guMudarSubAba('importacao', this)">Usuários de Importação</button>
       <button class="gu-subtab-btn" onclick="guMudarSubAba('admins', this)">Administradores</button>
       <button class="gu-subtab-btn" onclick="guMudarSubAba('modelos', this)">Modelos de Importação</button>
+      <button class="gu-subtab-btn" onclick="guMudarSubAba('logs', this)">Importações</button>
     </div>
 
     <!-- Sub-aba: Importação -->
@@ -581,6 +582,35 @@
         </table>
       </div>
       <div id="gu-modelos-msg" class="gu-msg"></div>
+    </div>
+
+    <!-- Sub-aba: Importações -->
+    <div id="gu-sub-logs" class="gu-subpanel">
+      <div class="gu-header">
+        <div style="font-family:'DM Mono',monospace;font-size:0.78rem;color:var(--text-dim)" id="gu-logs-total-label"></div>
+        <button class="btn-gu" onclick="guCarregarLogs()" style="border-color:var(--border)">↻ Atualizar</button>
+      </div>
+      <p style="font-family:'DM Mono',monospace;font-size:0.75rem;color:var(--text-dim);margin-bottom:18px;line-height:1.6">
+        Histórico de arquivos importados. Clique em <strong style="color:#e87070">Desfazer</strong> para reverter uma importação incorreta — os dados importados serão removidos do banco.
+      </p>
+      <div class="gu-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data / Hora</th>
+              <th>Usuário</th>
+              <th>Arquivo</th>
+              <th>Tipo</th>
+              <th style="text-align:right">Registros</th>
+              <th style="text-align:right">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="gu-logs-tbody">
+            <tr><td colspan="6"><div class="no-data">Carregando...</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="gu-logs-msg" class="gu-msg"></div>
     </div>
 
   </div>
@@ -4135,6 +4165,7 @@ function guMudarSubAba(aba, btn) {
   document.getElementById('gu-sub-' + aba).classList.add('active');
   if (aba === 'admins')   guCarregarAdmins();
   if (aba === 'modelos')  guCarregarModelos();
+  if (aba === 'logs')     guCarregarLogs();
 }
 
 // ── MODELOS DE IMPORTAÇÃO ─────────────────────────────────────────────────────
@@ -4209,6 +4240,91 @@ async function guFazUploadModelo(filename, inputEl) {
     inputEl.value = '';
     guCarregarModelos();
     setTimeout(() => { if (msgEl.textContent.includes(filename)) msgEl.textContent = ''; }, 4000);
+  } catch (err) {
+    msgEl.className  = 'gu-msg err';
+    msgEl.textContent = err.message;
+  }
+}
+
+// ── LOGS DE IMPORTAÇÃO ────────────────────────────────────────────────────────
+
+const TIPO_LABEL = {
+  dados_brutos:      'Dados Brutos',
+  categorias_depara: 'De/Para Categorias',
+  lojas_depara:      'De/Para Lojas'
+};
+
+async function guCarregarLogs() {
+  const token    = guGetToken();
+  const tbody    = document.getElementById('gu-logs-tbody');
+  const labelEl  = document.getElementById('gu-logs-total-label');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="6"><div class="no-data"><div class="spinner"></div></div></td></tr>';
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/logs-importacao`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.status === 401) { sessionStorage.removeItem('gu_token'); guAtualizarUI(); return; }
+
+    const logs = await res.json();
+
+    if (labelEl) labelEl.textContent = `${logs.length} importaç${logs.length !== 1 ? 'ões' : 'ão'} registrada${logs.length !== 1 ? 's' : ''}`;
+
+    if (logs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="no-data">Nenhuma importação registrada.</div></td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = logs.map(l => {
+      const dt = new Date(l.data);
+      const data = dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const hora = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const tipo = TIPO_LABEL[l.tipo] || l.tipo;
+      return `
+        <tr>
+          <td class="td-date">${data} ${hora}</td>
+          <td style="font-family:'DM Mono',monospace;font-size:0.82rem">${escHtml(l.usuario || '—')}</td>
+          <td style="font-family:'DM Mono',monospace;font-size:0.78rem;color:var(--text-dim);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(l.arquivo || '')}">${escHtml(l.arquivo || '—')}</td>
+          <td style="font-family:'DM Mono',monospace;font-size:0.75rem;color:var(--accent2)">${escHtml(tipo)}</td>
+          <td style="text-align:right;font-family:'DM Mono',monospace;font-size:0.82rem">${l.total ?? '—'}</td>
+          <td>
+            <div class="td-actions" style="justify-content:flex-end">
+              <button class="btn-gu excluir" onclick="guExcluirImportacao('${escHtml(String(l._id))}', '${escHtml(l.arquivo || '')}', '${escHtml(tipo)}')">Desfazer</button>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
+
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="no-data err">Erro ao carregar logs.</div></td></tr>';
+  }
+}
+
+async function guExcluirImportacao(id, arquivo, tipo) {
+  const msgEl = document.getElementById('gu-logs-msg');
+  const aviso = tipo === 'Dados Brutos'
+    ? `Desfazer importação "${arquivo}"?\n\nTodos os registros desta importação serão removidos do banco.`
+    : `Desfazer importação "${arquivo}" (${tipo})?\n\nATENÇÃO: a coleção inteira será apagada, pois este tipo de importação substitui o conteúdo anterior.`;
+  if (!confirm(aviso)) return;
+
+  const token = guGetToken();
+  msgEl.className  = 'gu-msg';
+  msgEl.textContent = 'Desfazendo importação...';
+
+  try {
+    const res  = await fetch(`${API_BASE}/api/admin/logs-importacao/${id}`, {
+      method:  'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.erro || 'Erro ao desfazer importação.');
+
+    msgEl.className  = 'gu-msg ok';
+    msgEl.textContent = 'Importação desfeita com sucesso.';
+    guCarregarLogs();
+    setTimeout(() => { msgEl.textContent = ''; }, 4000);
   } catch (err) {
     msgEl.className  = 'gu-msg err';
     msgEl.textContent = err.message;

@@ -75,6 +75,7 @@ function verificarToken(req, res, next) {
     sessoes.delete(token);
     return res.status(401).json({ erro: "Sessão expirada." });
   }
+  req.usuarioLogado = sessao.usuario || "desconhecido";
   next();
 }
 
@@ -248,7 +249,7 @@ async function iniciarServidor() {
           return res.status(401).json({ erro: "Usuário ou senha inválidos." });
         }
         const token = gerarToken();
-        sessoes.set(token, { expira: Date.now() + TOKEN_EXPIRY_MS });
+        sessoes.set(token, { expira: Date.now() + TOKEN_EXPIRY_MS, usuario: user.usuario });
         return res.json({ token });
       } catch (error) {
         res.status(500).json({ erro: "Erro ao verificar credenciais." });
@@ -761,6 +762,9 @@ async function iniciarServidor() {
       const resultados = [];
       if (!req.file) return res.status(400).json({ erro: "Nenhum arquivo enviado." });
 
+      const importId    = crypto.randomBytes(8).toString("hex");
+      const nomeArquivo = req.file.originalname || req.file.filename;
+
       fs.createReadStream(req.file.path)
         .pipe(csv({ separator: ";" }))
         .on("data", (linha) => {
@@ -769,45 +773,116 @@ async function iniciarServidor() {
             registro[limparValor(coluna)] = limparValor(linha[coluna]);
           });
           registro.importado_em = new Date();
+          registro._import_id   = importId;
           resultados.push(registro);
         })
         .on("end", async () => {
           if (resultados.length > 0) await db.collection("dados_brutos").insertMany(resultados);
           fs.unlinkSync(req.file.path);
+          await db.collection("logs_importacao").insertOne({
+            importId,
+            tipo:     "dados_brutos",
+            arquivo:  nomeArquivo,
+            usuario:  req.usuarioLogado,
+            total:    resultados.length,
+            data:     new Date()
+          });
           res.json({ mensagem: "Importação realizada 🚀", total: resultados.length });
         });
     });
 
     app.post("/api/importar/categorias-depara", verificarToken, upload.single("file"), async (req, res) => {
-      const resultados = [];
+      const resultados  = [];
+      const importId    = crypto.randomBytes(8).toString("hex");
+      const nomeArquivo = req.file.originalname || req.file.filename;
+
       fs.createReadStream(req.file.path)
         .pipe(csv({ separator: ";" }))
         .on("data", (linha) => {
           const registro = {};
           Object.keys(linha).forEach((coluna) => { registro[coluna.trim()] = linha[coluna].trim(); });
+          registro._import_id = importId;
           resultados.push(registro);
         })
         .on("end", async () => {
           await db.collection("categorias_depara").deleteMany({});
-          await db.collection("categorias_depara").insertMany(resultados);
+          if (resultados.length > 0) await db.collection("categorias_depara").insertMany(resultados);
+          fs.unlinkSync(req.file.path);
+          await db.collection("logs_importacao").insertOne({
+            importId,
+            tipo:    "categorias_depara",
+            arquivo: nomeArquivo,
+            usuario: req.usuarioLogado,
+            total:   resultados.length,
+            data:    new Date()
+          });
           res.json({ mensagem: "Categorias importadas" });
         });
     });
 
     app.post("/api/importar/lojas-depara", verificarToken, upload.single("file"), async (req, res) => {
-      const resultados = [];
+      const resultados  = [];
+      const importId    = crypto.randomBytes(8).toString("hex");
+      const nomeArquivo = req.file.originalname || req.file.filename;
+
       fs.createReadStream(req.file.path)
         .pipe(csv({ separator: ";" }))
         .on("data", (linha) => {
           const registro = {};
           Object.keys(linha).forEach((coluna) => { registro[coluna.trim()] = linha[coluna].trim(); });
+          registro._import_id = importId;
           resultados.push(registro);
         })
         .on("end", async () => {
           await db.collection("lojas_depara").deleteMany({});
-          await db.collection("lojas_depara").insertMany(resultados);
+          if (resultados.length > 0) await db.collection("lojas_depara").insertMany(resultados);
+          fs.unlinkSync(req.file.path);
+          await db.collection("logs_importacao").insertOne({
+            importId,
+            tipo:    "lojas_depara",
+            arquivo: nomeArquivo,
+            usuario: req.usuarioLogado,
+            total:   resultados.length,
+            data:    new Date()
+          });
           res.json({ mensagem: "Lojas importadas" });
         });
+    });
+
+    // ─────────────────────────────────────
+    // LOGS DE IMPORTAÇÃO (admin)
+    // ─────────────────────────────────────
+    app.get("/api/admin/logs-importacao", verificarTokenAdmin, async (req, res) => {
+      try {
+        const logs = await db.collection("logs_importacao")
+          .find({})
+          .sort({ data: -1 })
+          .limit(500)
+          .toArray();
+        res.json(logs);
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao listar logs.", detalhe: error.message });
+      }
+    });
+
+    app.delete("/api/admin/logs-importacao/:id", verificarTokenAdmin, async (req, res) => {
+      try {
+        const log = await db.collection("logs_importacao").findOne({ _id: new ObjectId(req.params.id) });
+        if (!log) return res.status(404).json({ erro: "Log não encontrado." });
+
+        if (log.tipo === "dados_brutos") {
+          await db.collection("dados_brutos").deleteMany({ _import_id: log.importId });
+        } else if (log.tipo === "categorias_depara") {
+          await db.collection("categorias_depara").deleteMany({});
+        } else if (log.tipo === "lojas_depara") {
+          await db.collection("lojas_depara").deleteMany({});
+        }
+
+        await db.collection("logs_importacao").deleteOne({ _id: new ObjectId(req.params.id) });
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao desfazer importação.", detalhe: error.message });
+      }
     });
 
     // ─────────────────────────────────────
