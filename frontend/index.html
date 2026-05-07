@@ -156,13 +156,15 @@
   .import-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; }
   .import-title { font-family: 'DM Serif Display', serif; font-size: 1.1rem; margin-bottom: 6px; }
   .import-sub { color: var(--text-dim); font-family: 'DM Mono', monospace; font-size: 0.72rem; line-height: 1.45; margin-bottom: 14px; }
-  .import-row { display: grid; grid-template-columns: 220px minmax(260px, 1fr) auto; gap: 12px; align-items: center; margin-top: 10px; }
+  .import-row { display: grid; grid-template-columns: 220px minmax(260px, 1fr) auto auto; gap: 12px; align-items: center; margin-top: 10px; }
   .import-label { color: var(--accent); font-family: 'DM Mono', monospace; font-size: 0.74rem; text-transform: uppercase; letter-spacing: .5px; }
   .import-file { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 9px 10px; border-radius: 8px; font-family: 'DM Mono', monospace; font-size: 0.75rem; min-width: 260px; }
   .btn-import { background: var(--accent); border: 1px solid var(--accent); color: var(--bg); padding: 9px 16px; border-radius: 8px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.78rem; font-weight: 500; letter-spacing: .5px; white-space: nowrap; transition: all .2s; }
   .btn-import:hover { filter: brightness(1.08); transform: translateY(-1px); }
   .btn-import.secondary { background: transparent; color: var(--accent); margin-top: 14px; }
   .btn-import.secondary:hover { background: rgba(200,241,53,0.08); }
+  .btn-modelo { background: transparent; border: 1px solid var(--border); color: var(--text-dim); padding: 9px 14px; border-radius: 8px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.74rem; white-space: nowrap; transition: all .2s; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-modelo:hover { border-color: var(--accent2); color: var(--accent2); }
   .import-status { color: var(--text-dim); font-family: 'DM Mono', monospace; font-size: 0.74rem; min-height: 18px; margin-top: 12px; }
   .import-status.ok { color: var(--accent2); }
   .import-status.err { color: #ff6b6b; }
@@ -403,22 +405,34 @@
   <!-- PAINEL DE IMPORTAÇÃO (visível apenas após login) -->
   <div id="import-painel" style="display:none">
     <h1 class="section-title">Importar Arquivos</h1>
-    <p class="section-sub">Importe os arquivos CSV diretamente para o MongoDB.</p>
+    <p class="section-sub">Importe os arquivos CSV diretamente para o MongoDB. Use o modelo para garantir o formato correto.</p>
 
     <div class="import-box">
       <div class="import-row">
         <div class="import-label">Dados Brutos</div>
         <input class="import-file" type="file" id="csvDadosBrutos" accept=".csv,text/csv" />
+        <a class="btn-modelo" href="/templates/modelo_dados_brutos.csv" download="modelo_dados_brutos.csv">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Modelo
+        </a>
         <button class="btn-import" onclick="enviarCSV('csvDadosBrutos', '/api/importar/dados-brutos')">Importar</button>
       </div>
       <div class="import-row">
         <div class="import-label">De/Para Categorias</div>
         <input class="import-file" type="file" id="csvCategorias" accept=".csv,text/csv" />
+        <a class="btn-modelo" href="/templates/modelo_categorias_depara.csv" download="modelo_categorias_depara.csv">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Modelo
+        </a>
         <button class="btn-import" onclick="enviarCSV('csvCategorias', '/api/importar/categorias-depara')">Importar</button>
       </div>
       <div class="import-row">
         <div class="import-label">De/Para Lojas</div>
         <input class="import-file" type="file" id="csvLojas" accept=".csv,text/csv" />
+        <a class="btn-modelo" href="/templates/modelo_lojas_depara.csv" download="modelo_lojas_depara.csv">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Modelo
+        </a>
         <button class="btn-import" onclick="enviarCSV('csvLojas', '/api/importar/lojas-depara')">Importar</button>
       </div>
       <button class="btn-import secondary" onclick="recarregarDados()">Atualizar painel</button>
