@@ -430,6 +430,82 @@ async function iniciarServidor() {
     });
 
     // ─────────────────────────────────────
+    // GESTÃO DE ADMINS (super-admin)
+    // ─────────────────────────────────────
+    app.get("/api/admin/admins", verificarTokenAdmin, async (req, res) => {
+      try {
+        const admins = await db
+          .collection("usuarios_admin")
+          .find({}, { projection: { senha: 0 } })
+          .sort({ criadoEm: 1 })
+          .toArray();
+        res.json(admins);
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao listar admins.", detalhe: error.message });
+      }
+    });
+
+    app.post("/api/admin/admins", verificarTokenAdmin, async (req, res) => {
+      const { usuario, senha, email } = req.body;
+      if (!usuario || !senha) return res.status(400).json({ erro: "Usuário e senha são obrigatórios." });
+
+      try {
+        const existente = await db.collection("usuarios_admin").findOne({ usuario });
+        if (existente) return res.status(400).json({ erro: "Usuário já existe." });
+
+        await db.collection("usuarios_admin").insertOne({
+          usuario,
+          senha:    hashSenha(senha),
+          email:    email ? email.trim().toLowerCase() : "",
+          criadoEm: new Date()
+        });
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao criar admin.", detalhe: error.message });
+      }
+    });
+
+    app.delete("/api/admin/admins/:id", verificarTokenAdmin, async (req, res) => {
+      try {
+        const total = await db.collection("usuarios_admin").countDocuments();
+        if (total <= 1) {
+          return res.status(400).json({ erro: "Não é possível excluir o único administrador." });
+        }
+        await db.collection("usuarios_admin").deleteOne({ _id: new ObjectId(req.params.id) });
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao excluir admin.", detalhe: error.message });
+      }
+    });
+
+    app.put("/api/admin/admins/:id/senha", verificarTokenAdmin, async (req, res) => {
+      const { senha } = req.body;
+      if (!senha) return res.status(400).json({ erro: "Nova senha é obrigatória." });
+      try {
+        await db.collection("usuarios_admin").updateOne(
+          { _id: new ObjectId(req.params.id) },
+          { $set: { senha: hashSenha(senha) } }
+        );
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao alterar senha.", detalhe: error.message });
+      }
+    });
+
+    app.put("/api/admin/admins/:id/email", verificarTokenAdmin, async (req, res) => {
+      const { email } = req.body;
+      try {
+        await db.collection("usuarios_admin").updateOne(
+          { _id: new ObjectId(req.params.id) },
+          { $set: { email: email ? email.trim().toLowerCase() : "" } }
+        );
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao atualizar e-mail.", detalhe: error.message });
+      }
+    });
+
+    // ─────────────────────────────────────
     // CONSULTAS
     // ─────────────────────────────────────
     app.get("/api/dados-brutos", async (req, res) => {
