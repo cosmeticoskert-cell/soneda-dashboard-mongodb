@@ -1654,18 +1654,20 @@ function renderizar() {
 
   // Gráficos/tabelas da dimensão selecionada mantêm todas as linhas visíveis e destacam a linha ativa.
   // KPIs e demais visuais recebem o filtro ativo normalmente.
+  const todosFiltrados = filtrar();
   const byLojaChart = agruparPorLoja(filtrar('loja'));
-  const byLojaFull  = agruparPorLoja(filtrar());
+  const byLojaFull  = agruparPorLoja(todosFiltrados);
 
-  renderKPIs(byLojaFull);
+  renderKPIs(byLojaFull, todosFiltrados);
   renderGrafico(byLojaChart);
   renderTabela(byLojaChart);
   renderCat1(filtrar('cat'));
   renderFam1(filtrar('familia'));
 }
 
-function renderKPIs(byLoja) {
-  const total  = byLoja.reduce((s,r) => s + r.qty, 0);
+function renderKPIs(byLoja, todosFiltrados) {
+  const total  = (todosFiltrados || []).reduce((s,r) =>
+    s + parseBR(col(r,'Venda (Qtd)','Venda Nf Quantidade','Venda Pdv Quantidade')), 0);
   const ativas = byLoja.filter(r => r.qty > 0).length;
   const top    = byLoja[0];
   document.getElementById('kpi-total').textContent   = total.toLocaleString('pt-BR');
@@ -3043,7 +3045,9 @@ function seRenderizar() {
   document.getElementById('se-chart-sub').textContent =
     [ano, mes].filter(Boolean).join(' · ') || 'Todos os períodos';
 
-  const totalSellout = byLoja.reduce((s,r) => s + r.sellout, 0);
+  // Total de sell out de TODOS os registros (não apenas lojas no de/para)
+  const totalSellout = dados.reduce((s,r) =>
+    s + parseBR(col(r,'Venda (Qtd)','Venda Nf Quantidade','Venda Pdv Quantidade')), 0);
   const totalEstoque = byLoja.reduce((s,r) => s + r.estoque, 0);
 
   document.getElementById('se-kpi-sellout').textContent = totalSellout.toLocaleString('pt-BR');
@@ -3381,8 +3385,9 @@ function vFmtR(v) {
   return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function vRenderKPIs(byLoja) {
-  const total  = byLoja.reduce((s,r) => s + r.val, 0);
+function vRenderKPIs(byLoja, todosFiltrados) {
+  const total  = (todosFiltrados || []).reduce((s,r) =>
+    s + parseBR(col(r,'Venda (R$)','Venda(R$)','Venda R$','venda (r$)','Venda Valor','Venda NF Valor','Venda PDV Valor','venda_valor','Valor Venda')), 0);
   const ativas = byLoja.filter(r => r.val > 0).length;
   const top    = byLoja[0];
   document.getElementById('v-kpi-total').textContent   = vFmtR(total);
@@ -3745,9 +3750,10 @@ function vRenderizar() {
   document.getElementById('v-chart-sub').textContent = [ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos';
   document.getElementById('v-loja-ativa').style.display = 'none';
 
+  const vTodosFiltrados = vFiltrar();
   const byLojaChart = vAgruparPorLoja(vFiltrar('loja'));
-  const byLojaFull  = vAgruparPorLoja(vFiltrar());
-  vRenderKPIs(byLojaFull);
+  const byLojaFull  = vAgruparPorLoja(vTodosFiltrados);
+  vRenderKPIs(byLojaFull, vTodosFiltrados);
   vRenderGrafico(byLojaChart);
   vRenderTabela(byLojaChart);
   vRenderCat1(vFiltrar('cat'));
