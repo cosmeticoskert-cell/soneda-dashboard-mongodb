@@ -1635,18 +1635,19 @@ function dataParaISO(dt) {
 
 
 function getCat(r) {
-  const ean = normalizarCodigoBarras(col(r, 'GTIN', 'gtin', 'Gtin', 'GTIN/PLU', 'Gtin/Plu', 'gtin/plu', 'PLU', 'Ean', 'EAN', 'codbarras', 'CODBARRAS'));
+  const ean = normalizarCodigoBarras(col(r, 'GTIN/PLU', 'GTIN', 'gtin', 'Gtin', 'Gtin/Plu', 'gtin/plu', 'PLU', 'Ean', 'EAN', 'codbarras', 'CODBARRAS'));
   return (ean && catMap[ean]) ? catMap[ean] : '';
 }
 
 function getFamilia(r) {
-  const gtin = normalizarCodigoBarras(col(r, 'GTIN', 'gtin', 'Gtin', 'GTIN/PLU', 'Gtin/Plu', 'gtin/plu', 'PLU', 'Ean', 'EAN', 'codbarras', 'CODBARRAS'));
+  const gtin = normalizarCodigoBarras(col(r, 'GTIN/PLU', 'GTIN', 'gtin', 'Gtin', 'Gtin/Plu', 'gtin/plu', 'PLU', 'Ean', 'EAN', 'codbarras', 'CODBARRAS'));
   return (gtin && familiaMap[gtin]) ? familiaMap[gtin] : '';
 }
 
 function getProduto(r) {
-  const ean = normalizarCodigoBarras(col(r, 'GTIN', 'gtin', 'Gtin', 'GTIN/PLU', 'Gtin/Plu', 'gtin/plu', 'PLU', 'Ean', 'EAN', 'codbarras', 'CODBARRAS'));
-  return (ean && produtoMap[ean]) ? produtoMap[ean] : '';
+  const ean = normalizarCodigoBarras(col(r, 'GTIN/PLU', 'GTIN', 'gtin', 'Gtin', 'Gtin/Plu', 'gtin/plu', 'PLU', 'Ean', 'EAN', 'codbarras', 'CODBARRAS'));
+  if (ean && produtoMap[ean]) return produtoMap[ean];
+  return col(r, 'Produto', 'produto');
 }
 
 function setEstado(html) {

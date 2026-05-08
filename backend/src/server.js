@@ -127,7 +127,7 @@ async function iniciarServidor() {
       {
         filename: "modelo_dados_brutos.csv",
         nome:     "Dados Brutos",
-        conteudo: "Ano;Mês;Loja;GTIN/PLU;Produto;Venda (Qtd);Venda (R$)\n2025;Jan;001;7891234567890;Produto Exemplo;10;150,00\n"
+        conteudo: "Ano;Mês;Data;Loja;GTIN/PLU;Produto;Venda (Qtd);Venda (R$);Estoque Diario\n2025;Jan;01/01/2025;001;7891234567890;Produto Exemplo;10;150,00;50\n"
       },
       {
         filename: "modelo_categorias_depara.csv",
