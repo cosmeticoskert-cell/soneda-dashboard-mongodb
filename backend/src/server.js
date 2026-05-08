@@ -756,171 +756,133 @@ async function iniciarServidor() {
     });
 
     // ─────────────────────────────────────
-    // IMPORTAÇÕES (PROTEGIDAS)
+    // IMPORTAÇÕES (PROTEGIDAS) — suporte a upload chunked
     // ─────────────────────────────────────
+
+    // Helper: processa um arquivo CSV temporário e insere na coleção
+    async function processarChunkCSV(req, colecao, limparColunas, opcoes = {}) {
+      return new Promise((resolve, reject) => {
+        const resultados = [];
+        const stream = fs.createReadStream(req.file.path).pipe(csv({ separator: ";" }));
+
+        stream.on("data", (linha) => {
+          const registro = {};
+          Object.keys(linha).forEach((coluna) => {
+            const k = limparColunas ? coluna.trim() : limparValor(coluna);
+            const v = limparColunas ? linha[coluna].trim() : limparValor(linha[coluna]);
+            registro[k] = v;
+          });
+          if (opcoes.extraCampos) Object.assign(registro, opcoes.extraCampos);
+          resultados.push(registro);
+        });
+
+        stream.on("error", reject);
+
+        stream.on("end", async () => {
+          try {
+            if (opcoes.deleteFirst) await colecao.deleteMany({});
+            if (resultados.length > 0) {
+              await colecao.insertMany(resultados, { ordered: false });
+            }
+            try { fs.unlinkSync(req.file.path); } catch (_) {}
+            resolve(resultados.length);
+          } catch (err) {
+            try { fs.unlinkSync(req.file.path); } catch (_) {}
+            reject(err);
+          }
+        });
+      });
+    }
+
     app.post("/api/importar/dados-brutos", verificarToken, upload.single("file"), async (req, res) => {
       if (!req.file) return res.status(400).json({ erro: "Nenhum arquivo enviado." });
 
-      // Desabilita timeout do socket para permitir imports grandes
-      req.socket.setTimeout(0);
-      res.setTimeout(0);
+      const importId     = req.body.importId    || crypto.randomBytes(8).toString("hex");
+      const chunkIndex   = parseInt(req.body.chunkIndex   ?? "0",  10);
+      const totalChunks  = parseInt(req.body.totalChunks  ?? "1",  10);
+      const totalRecords = parseInt(req.body.totalRecords ?? "0",  10);
+      const nomeArquivo  = req.file.originalname || req.file.filename;
 
-      const importId    = crypto.randomBytes(8).toString("hex");
-      const nomeArquivo = req.file.originalname || req.file.filename;
-      const resultados  = [];
-      let   respondido  = false;
-
-      const responderErro = (status, msg, detalhe) => {
-        if (respondido) return;
-        respondido = true;
-        try { fs.unlinkSync(req.file.path); } catch (_) {}
-        res.status(status).json({ erro: msg, detalhe });
-      };
-
-      const stream = fs.createReadStream(req.file.path).pipe(csv({ separator: ";" }));
-
-      stream.on("data", (linha) => {
-        const registro = {};
-        Object.keys(linha).forEach((coluna) => {
-          registro[limparValor(coluna)] = limparValor(linha[coluna]);
+      try {
+        const inserido = await processarChunkCSV(req, db.collection("dados_brutos"), false, {
+          extraCampos: { importado_em: new Date(), _import_id: importId }
         });
-        registro.importado_em = new Date();
-        registro._import_id   = importId;
-        resultados.push(registro);
-      });
 
-      stream.on("error", (err) => responderErro(500, "Erro ao ler arquivo CSV", err.message));
-
-      stream.on("end", async () => {
-        try {
-          const LOTE = 500;
-          for (let i = 0; i < resultados.length; i += LOTE) {
-            await db.collection("dados_brutos").insertMany(
-              resultados.slice(i, i + LOTE),
-              { ordered: false }
-            );
-          }
-          try { fs.unlinkSync(req.file.path); } catch (_) {}
+        const isUltimo = chunkIndex === totalChunks - 1;
+        if (isUltimo) {
           await db.collection("logs_importacao").insertOne({
             importId, tipo: "dados_brutos", arquivo: nomeArquivo,
-            usuario: req.usuarioLogado, total: resultados.length, data: new Date()
+            usuario: req.usuarioLogado, total: totalRecords || inserido, data: new Date()
           });
-          if (!respondido) {
-            respondido = true;
-            res.json({ mensagem: "Importação realizada 🚀", total: resultados.length });
-          }
-        } catch (error) {
-          responderErro(500, "Erro ao salvar no banco de dados", error.message);
         }
-      });
+
+        res.json({
+          ok: true,
+          inserido,
+          ultimo: isUltimo,
+          mensagem: isUltimo ? "Importação finalizada 🚀" : "Lote salvo"
+        });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao salvar no banco de dados", detalhe: error.message });
+      }
     });
 
     app.post("/api/importar/categorias-depara", verificarToken, upload.single("file"), async (req, res) => {
       if (!req.file) return res.status(400).json({ erro: "Nenhum arquivo enviado." });
 
-      req.socket.setTimeout(0);
-      res.setTimeout(0);
+      const importId     = req.body.importId    || crypto.randomBytes(8).toString("hex");
+      const chunkIndex   = parseInt(req.body.chunkIndex   ?? "0", 10);
+      const totalChunks  = parseInt(req.body.totalChunks  ?? "1", 10);
+      const totalRecords = parseInt(req.body.totalRecords ?? "0", 10);
+      const nomeArquivo  = req.file.originalname || req.file.filename;
 
-      const importId    = crypto.randomBytes(8).toString("hex");
-      const nomeArquivo = req.file.originalname || req.file.filename;
-      const resultados  = [];
-      let   respondido  = false;
+      try {
+        const inserido = await processarChunkCSV(req, db.collection("categorias_depara"), true, {
+          deleteFirst: chunkIndex === 0,
+          extraCampos: { _import_id: importId }
+        });
 
-      const responderErro = (status, msg, detalhe) => {
-        if (respondido) return;
-        respondido = true;
-        try { fs.unlinkSync(req.file.path); } catch (_) {}
-        res.status(status).json({ erro: msg, detalhe });
-      };
-
-      const stream = fs.createReadStream(req.file.path).pipe(csv({ separator: ";" }));
-
-      stream.on("data", (linha) => {
-        const registro = {};
-        Object.keys(linha).forEach((coluna) => { registro[coluna.trim()] = linha[coluna].trim(); });
-        registro._import_id = importId;
-        resultados.push(registro);
-      });
-
-      stream.on("error", (err) => responderErro(500, "Erro ao ler arquivo CSV", err.message));
-
-      stream.on("end", async () => {
-        try {
-          await db.collection("categorias_depara").deleteMany({});
-          const LOTE = 500;
-          for (let i = 0; i < resultados.length; i += LOTE) {
-            await db.collection("categorias_depara").insertMany(
-              resultados.slice(i, i + LOTE),
-              { ordered: false }
-            );
-          }
-          try { fs.unlinkSync(req.file.path); } catch (_) {}
+        const isUltimo = chunkIndex === totalChunks - 1;
+        if (isUltimo) {
           await db.collection("logs_importacao").insertOne({
             importId, tipo: "categorias_depara", arquivo: nomeArquivo,
-            usuario: req.usuarioLogado, total: resultados.length, data: new Date()
+            usuario: req.usuarioLogado, total: totalRecords || inserido, data: new Date()
           });
-          if (!respondido) {
-            respondido = true;
-            res.json({ mensagem: "Categorias importadas", total: resultados.length });
-          }
-        } catch (error) {
-          responderErro(500, "Erro ao salvar no banco de dados", error.message);
         }
-      });
+
+        res.json({ ok: true, inserido, ultimo: isUltimo, mensagem: isUltimo ? "Categorias importadas" : "Lote salvo" });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao salvar no banco de dados", detalhe: error.message });
+      }
     });
 
     app.post("/api/importar/lojas-depara", verificarToken, upload.single("file"), async (req, res) => {
       if (!req.file) return res.status(400).json({ erro: "Nenhum arquivo enviado." });
 
-      req.socket.setTimeout(0);
-      res.setTimeout(0);
+      const importId     = req.body.importId    || crypto.randomBytes(8).toString("hex");
+      const chunkIndex   = parseInt(req.body.chunkIndex   ?? "0", 10);
+      const totalChunks  = parseInt(req.body.totalChunks  ?? "1", 10);
+      const totalRecords = parseInt(req.body.totalRecords ?? "0", 10);
+      const nomeArquivo  = req.file.originalname || req.file.filename;
 
-      const importId    = crypto.randomBytes(8).toString("hex");
-      const nomeArquivo = req.file.originalname || req.file.filename;
-      const resultados  = [];
-      let   respondido  = false;
+      try {
+        const inserido = await processarChunkCSV(req, db.collection("lojas_depara"), true, {
+          deleteFirst: chunkIndex === 0,
+          extraCampos: { _import_id: importId }
+        });
 
-      const responderErro = (status, msg, detalhe) => {
-        if (respondido) return;
-        respondido = true;
-        try { fs.unlinkSync(req.file.path); } catch (_) {}
-        res.status(status).json({ erro: msg, detalhe });
-      };
-
-      const stream = fs.createReadStream(req.file.path).pipe(csv({ separator: ";" }));
-
-      stream.on("data", (linha) => {
-        const registro = {};
-        Object.keys(linha).forEach((coluna) => { registro[coluna.trim()] = linha[coluna].trim(); });
-        registro._import_id = importId;
-        resultados.push(registro);
-      });
-
-      stream.on("error", (err) => responderErro(500, "Erro ao ler arquivo CSV", err.message));
-
-      stream.on("end", async () => {
-        try {
-          await db.collection("lojas_depara").deleteMany({});
-          const LOTE = 500;
-          for (let i = 0; i < resultados.length; i += LOTE) {
-            await db.collection("lojas_depara").insertMany(
-              resultados.slice(i, i + LOTE),
-              { ordered: false }
-            );
-          }
-          try { fs.unlinkSync(req.file.path); } catch (_) {}
+        const isUltimo = chunkIndex === totalChunks - 1;
+        if (isUltimo) {
           await db.collection("logs_importacao").insertOne({
             importId, tipo: "lojas_depara", arquivo: nomeArquivo,
-            usuario: req.usuarioLogado, total: resultados.length, data: new Date()
+            usuario: req.usuarioLogado, total: totalRecords || inserido, data: new Date()
           });
-          if (!respondido) {
-            respondido = true;
-            res.json({ mensagem: "Lojas importadas", total: resultados.length });
-          }
-        } catch (error) {
-          responderErro(500, "Erro ao salvar no banco de dados", error.message);
         }
-      });
+
+        res.json({ ok: true, inserido, ultimo: isUltimo, mensagem: isUltimo ? "Lojas importadas" : "Lote salvo" });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao salvar no banco de dados", detalhe: error.message });
+      }
     });
 
     // ─────────────────────────────────────

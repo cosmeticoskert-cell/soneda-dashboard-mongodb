@@ -1358,8 +1358,8 @@ async function admLogout() {
 
 async function enviarCSV(inputId, rota) {
   const fileInput = document.getElementById(inputId);
-  const status = document.getElementById('import-status');
-  const token  = admGetToken();
+  const status    = document.getElementById('import-status');
+  const token     = admGetToken();
 
   if (!fileInput || !fileInput.files.length) {
     status.textContent = 'Selecione um arquivo CSV antes de importar.';
@@ -1368,49 +1368,74 @@ async function enviarCSV(inputId, rota) {
   }
 
   const arquivo = fileInput.files[0];
-  const formData = new FormData();
-  formData.append('file', arquivo);
+  const kb = Math.round(arquivo.size / 1024);
+
+  // Função para atualizar barra de progresso visual
+  const setProgresso = (atual, total, msg) => {
+    const pct = total > 0 ? Math.round((atual / total) * 100) : 0;
+    const blocos = Math.round(pct / 5); // barra de 20 blocos
+    const barra = '█'.repeat(blocos) + '░'.repeat(20 - blocos);
+    status.innerHTML = `<span style="font-family:'DM Mono',monospace">[${barra}] ${pct}%</span> ${msg}`;
+    status.className = 'import-status';
+  };
 
   try {
-    const kb = Math.round(arquivo.size / 1024);
-    status.textContent = `Enviando arquivo (${kb.toLocaleString('pt-BR')} KB) para o servidor...`;
+    status.textContent = `Lendo arquivo (${kb.toLocaleString('pt-BR')} KB)...`;
     status.className = 'import-status';
 
-    // Intervalo para mostrar que está processando
-    let dots = 0;
-    const timer = setInterval(() => {
-      dots = (dots + 1) % 4;
-      status.textContent = `Processando arquivo${'.'.repeat(dots)} (isso pode levar alguns minutos para arquivos grandes)`;
-    }, 800);
+    // Lê o arquivo como texto no browser
+    const texto = await arquivo.text();
+    const linhas = texto.split(/\r?\n/);
+    const cabecalho = linhas[0];
+    const dados = linhas.slice(1).filter(l => l.trim() !== '');
 
-    let response;
-    try {
-      response = await fetch(`${API_BASE}${rota}`, {
+    if (!cabecalho || dados.length === 0) {
+      throw new Error('Arquivo vazio ou sem dados.');
+    }
+
+    const LINHAS_POR_LOTE = 1500;
+    const totalLotes  = Math.ceil(dados.length / LINHAS_POR_LOTE);
+    const importId    = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    let   totalInserido = 0;
+
+    for (let i = 0; i < totalLotes; i++) {
+      const fatia     = dados.slice(i * LINHAS_POR_LOTE, (i + 1) * LINHAS_POR_LOTE);
+      const csvLote   = cabecalho + '\n' + fatia.join('\n');
+      const blob      = new Blob([csvLote], { type: 'text/csv;charset=utf-8' });
+      const formData  = new FormData();
+      formData.append('file', new File([blob], arquivo.name, { type: 'text/csv' }));
+      formData.append('importId', importId);
+      formData.append('chunkIndex', String(i));
+      formData.append('totalChunks', String(totalLotes));
+      formData.append('totalRecords', String(dados.length));
+
+      setProgresso(i, totalLotes,
+        `Enviando lote ${i + 1} de ${totalLotes} · ${fatia.length.toLocaleString('pt-BR')} linhas · total ${dados.length.toLocaleString('pt-BR')} registros`);
+
+      const response = await fetch(`${API_BASE}${rota}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
       });
-    } finally {
-      clearInterval(timer);
+
+      const textoResp = await response.text();
+      let data;
+      try { data = JSON.parse(textoResp); } catch (_) {
+        throw new Error(`Lote ${i + 1}: servidor retornou resposta inválida (${response.status}). Verifique o servidor e tente novamente.`);
+      }
+
+      if (response.status === 401) {
+        sessionStorage.removeItem('adm_token');
+        admAtualizarUI();
+        throw new Error('Sessão expirada. Faça login novamente.');
+      }
+      if (!response.ok) throw new Error(`Lote ${i + 1}: ${data.erro || data.detalhe || 'Erro desconhecido'}`);
+
+      totalInserido += data.inserido || 0;
     }
 
-    // Lê como texto primeiro para evitar SyntaxError quando o servidor retorna mensagem não-JSON
-    const texto = await response.text();
-    let data;
-    try {
-      data = JSON.parse(texto);
-    } catch (_) {
-      throw new Error(`Servidor não respondeu corretamente (${response.status}). Arquivo pode ser muito grande ou a conexão caiu. Tente novamente.`);
-    }
-
-    if (response.status === 401) {
-      sessionStorage.removeItem('adm_token');
-      admAtualizarUI();
-      throw new Error('Sessão expirada. Faça login novamente.');
-    }
-    if (!response.ok) throw new Error(data.erro || data.detalhe || 'Erro ao importar CSV');
-
-    status.textContent = `${data.mensagem || 'Importação realizada com sucesso'} (${(data.total || 0).toLocaleString('pt-BR')} registros).`;
+    setProgresso(totalLotes, totalLotes, '');
+    status.innerHTML = `✔ Importação concluída — <strong>${totalInserido.toLocaleString('pt-BR')}</strong> registros inseridos em ${totalLotes} lote${totalLotes > 1 ? 's' : ''}.`;
     status.className = 'import-status ok';
 
   } catch (error) {
