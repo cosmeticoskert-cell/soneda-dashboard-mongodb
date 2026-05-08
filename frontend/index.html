@@ -1529,7 +1529,7 @@ async function init() {
           const ano = c['Ano'] || '';
           const mesNum = MN[mes] || parseInt(mes);
           if (mesNum && ano && !isNaN(parseInt(ano))) {
-            c.Data = `01/${String(mesNum).padStart(2,'0')}/${ano}`;
+            c.Data = `${parseInt(ano)}-${String(mesNum).padStart(2,'0')}-01`;
           }
         }
         return c;
@@ -1588,20 +1588,39 @@ function parseDataBR(raw) {
   const txt = String(raw).trim();
   if (!txt) return null;
 
-  // Google Sheets exporta datas no formato americano M/D/AAAA (mês/dia/ano)
+  // ISO AAAA-MM-DD — evita problema de fuso horário (UTC vs local)
+  const iso = txt.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    const dt = new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]));
+    return isNaN(dt) ? null : dt;
+  }
+
+  // Formato com barras: DD/MM/AAAA (BR) ou M/D/AAAA (Google Sheets americano)
   const p = txt.split('/');
   if (p.length === 3) {
-    const m = Number(p[0]); // mês vem primeiro
-    const d = Number(p[1]); // dia vem segundo
+    const a = Number(p[0]);
+    const b = Number(p[1]);
     const y = Number(p[2]);
-
-    if (!Number.isNaN(m) && !Number.isNaN(d) && !Number.isNaN(y) && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-      const dt = new Date(y, m - 1, d);
-      return isNaN(dt) ? null : dt;
+    if (!Number.isNaN(a) && !Number.isNaN(b) && !Number.isNaN(y) && y >= 1900) {
+      let d, m;
+      if (a > 12) {
+        // primeiro número > 12 → obrigatoriamente dia (DD/MM/AAAA)
+        d = a; m = b;
+      } else if (b > 12) {
+        // segundo número > 12 → obrigatoriamente dia, primeiro é mês (M/D/AAAA)
+        m = a; d = b;
+      } else {
+        // ambíguo: padrão brasileiro DD/MM/AAAA
+        d = a; m = b;
+      }
+      if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+        const dt = new Date(y, m - 1, d);
+        return isNaN(dt) ? null : dt;
+      }
     }
   }
 
-  // Fallback para ISO (AAAA-MM-DD) ou outros formatos
+  // Fallback para outros formatos
   const dt = new Date(txt);
   return isNaN(dt) ? null : dt;
 }
