@@ -63,7 +63,7 @@
   .chart-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
   .chart-title { font-family: 'DM Serif Display', serif; font-size: 1.2rem; }
   .chart-subtitle { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--muted); margin-top: 4px; }
-  .chart-wrap { position: relative; height: 420px; }
+  .chart-wrap { position: relative; height: 420px; overflow: hidden; }
   .timeline-card-horizontal { padding-bottom: 30px; }
   .timeline-card-horizontal .chart-wrap { width: 100%; height: 420px !important; }
   .horizontal-legend-box {
@@ -1768,7 +1768,7 @@ function renderGrafico(byLoja) {
       responsive: true,
       maintainAspectRatio: false,
       onClick: (evt, elements) => {
-        if (elements.length > 0) fSetFilter('loja', byLoja[elements[0].index].loja);
+        if (elements.length > 0) setTimeout(() => fSetFilter('loja', byLoja[elements[0].index].loja), 0);
       },
       interaction: { mode: 'index', intersect: false },
       plugins: {
@@ -1865,7 +1865,7 @@ function renderCat1(data) {
     options: {
       responsive: true, maintainAspectRatio: false,
       onClick: (evt, elements) => {
-        if (elements.length > 0) fSetFilter('cat', byCat[elements[0].index].cat);
+        if (elements.length > 0) setTimeout(() => fSetFilter('cat', byCat[elements[0].index].cat), 0);
       },
       plugins: {
         legend: { display: false },
@@ -1969,7 +1969,7 @@ function renderFam1(data) {
     options: {
       responsive: true, maintainAspectRatio: false,
       onClick: (evt, elements) => {
-        if (elements.length > 0) fSetFilter('familia', byFam[elements[0].index].fam);
+        if (elements.length > 0) setTimeout(() => fSetFilter('familia', byFam[elements[0].index].fam), 0);
       },
       plugins: {
         legend: { display: false },
@@ -2772,7 +2772,7 @@ function d3Renderizar() {
       options: {
         responsive: true, maintainAspectRatio: false,
         onClick: (evt, elements) => {
-          if (elements.length > 0) d3SetFilter('loja', byLoja[elements[0].index].loja);
+          if (elements.length > 0) setTimeout(() => d3SetFilter('loja', byLoja[elements[0].index].loja), 0);
         },
         plugins: {
           legend: { display: false },
@@ -3269,7 +3269,7 @@ function seRenderGrafico(byLoja) {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       onClick: (evt, elements) => {
-        if (elements.length > 0) seFiltrarPorLoja(dadosGrafico[elements[0].index].loja);
+        if (elements.length > 0) setTimeout(() => seFiltrarPorLoja(dadosGrafico[elements[0].index].loja), 0);
       },
       plugins: {
         legend: {
@@ -3588,7 +3588,7 @@ function vRenderGrafico(byLoja) {
     options: {
       responsive: true, maintainAspectRatio: false,
       onClick: (evt, elements) => {
-        if (elements.length > 0) vSetFilter('loja', byLoja[elements[0].index].loja);
+        if (elements.length > 0) setTimeout(() => vSetFilter('loja', byLoja[elements[0].index].loja), 0);
       },
       interaction: { mode: 'index', intersect: false },
       plugins: {
@@ -3718,7 +3718,7 @@ function vRenderCat1(data) {
     options: {
       responsive: true, maintainAspectRatio: false,
       onClick: (evt, elements) => {
-        if (elements.length > 0) vSetFilter('cat', byCat[elements[0].index].cat);
+        if (elements.length > 0) setTimeout(() => vSetFilter('cat', byCat[elements[0].index].cat), 0);
       },
       plugins: {
         legend: { display: false },
@@ -3825,7 +3825,7 @@ function vRenderFam1(data) {
       responsive: true,
       maintainAspectRatio: false,
       onClick: (evt, elements) => {
-        if (elements.length > 0) vSetFilter('familia', byFam[elements[0].index].fam);
+        if (elements.length > 0) setTimeout(() => vSetFilter('familia', byFam[elements[0].index].fam), 0);
       },
       plugins: {
         legend: { display: false },
