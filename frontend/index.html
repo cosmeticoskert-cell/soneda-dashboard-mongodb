@@ -1775,22 +1775,40 @@ function renderizar() {
   const byLojaChart = agruparPorLoja(filtrar('loja'));
   const byLojaFull  = agruparPorLoja(todosFiltrados);
 
-  renderKPIs(byLojaFull, todosFiltrados);
+  renderKPIs(byLojaFull);
+  fetchKPIs();
   renderGrafico(byLojaChart);
   renderTabela(byLojaChart);
   renderCat1(filtrar('cat'));
   renderFam1(filtrar('familia'));
 }
 
-function renderKPIs(byLoja, todosFiltrados) {
-  const total  = (todosFiltrados || []).reduce((s,r) =>
-    s + parseBR(col(r,'Venda (Qtd)','Venda Nf Quantidade','Venda Pdv Quantidade')), 0);
-  const ativas = byLoja.filter(r => r.qty > 0).length;
-  const top    = byLoja[0];
-  document.getElementById('kpi-total').textContent   = total.toLocaleString('pt-BR');
-  document.getElementById('kpi-lojas').textContent   = ativas;
+function renderKPIs(byLoja) {
+  const top = byLoja[0];
   document.getElementById('kpi-top').textContent     = top ? top.nome : '—';
   document.getElementById('kpi-top-sub').textContent = top ? `${top.qty.toLocaleString('pt-BR')} un.` : '—';
+}
+
+async function fetchKPIs() {
+  const ano  = document.getElementById('f-ano').value;
+  const mes  = document.getElementById('f-mes').value;
+  const loja = document.getElementById('f-loja').value;
+  const params = new URLSearchParams();
+  if (ano)  params.set('ano', ano);
+  if (mes)  params.set('mes', mes);
+  if (loja) params.set('loja', loja);
+  try {
+    const kpis = await fetchJSON(`${API_BASE}/api/dashboard/kpis?${params}`);
+    document.getElementById('kpi-total').textContent = Number(kpis.total_vendido || 0).toLocaleString('pt-BR');
+    document.getElementById('kpi-lojas').textContent = Number(kpis.total_lojas   || 0).toLocaleString('pt-BR');
+    if (kpis.maior_loja) {
+      const nomeLoja = deParaMap[normCodLoja(String(kpis.maior_loja._id || ''))] || `Filial ${kpis.maior_loja._id}`;
+      document.getElementById('kpi-top').textContent     = nomeLoja;
+      document.getElementById('kpi-top-sub').textContent = `${Number(kpis.maior_loja.qty || 0).toLocaleString('pt-BR')} un.`;
+    }
+  } catch(e) {
+    console.warn('KPIs backend indisponíveis:', e.message);
+  }
 }
 
 function renderGrafico(byLoja) {

@@ -707,6 +707,49 @@ async function iniciarServidor() {
     });
 
     // ─────────────────────────────────────
+    // KPIs COM FILTRO
+    // ─────────────────────────────────────
+    app.get("/api/dashboard/kpis", async (req, res) => {
+      try {
+        const { ano, mes, loja } = req.query;
+        const match = {};
+        if (ano)  match["Ano"]   = String(ano);
+        if (mes)  match["Mês"]   = String(mes);
+        if (loja) match["Loja"]  = String(loja);
+
+        const matchStage = Object.keys(match).length > 0 ? [{ $match: match }] : [];
+
+        const [resumoArr, topLojaArr] = await Promise.all([
+          db.collection("dados_brutos").aggregate([
+            ...matchStage,
+            {
+              $group: {
+                _id: null,
+                total_vendido: { $sum: brToDouble({ $getField: "Venda (Qtd)" }) },
+                total_valor:   { $sum: brToDouble({ $getField: "Venda (R$)" }) },
+                lojas:         { $addToSet: "$Loja" }
+              }
+            },
+            { $project: { _id: 0, total_vendido: 1, total_valor: 1, total_lojas: { $size: "$lojas" } } }
+          ]).toArray(),
+          db.collection("dados_brutos").aggregate([
+            ...matchStage,
+            { $group: { _id: "$Loja", qty: { $sum: brToDouble({ $getField: "Venda (Qtd)" }) } } },
+            { $sort: { qty: -1 } },
+            { $limit: 1 }
+          ]).toArray()
+        ]);
+
+        const resumo = resumoArr[0] || { total_vendido: 0, total_valor: 0, total_lojas: 0 };
+        if (topLojaArr[0]) resumo.maior_loja = topLojaArr[0];
+
+        res.json(resumo);
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao gerar KPIs", detalhe: error.message });
+      }
+    });
+
+    // ─────────────────────────────────────
     // VENDAS POR FILIAL
     // ─────────────────────────────────────
     app.get("/api/dashboard/vendas-por-filial", async (req, res) => {
