@@ -207,6 +207,15 @@ async function iniciarServidor() {
     // Garante índice único no campo usuario
     await db.collection("usuarios_importacao").createIndex({ usuario: 1 }, { unique: true });
 
+    // Índices de performance para dados_brutos (queries de dashboard)
+    await Promise.all([
+      db.collection("dados_brutos").createIndex({ "Ano": 1, "Mês": 1 }),
+      db.collection("dados_brutos").createIndex({ "Loja": 1 }),
+      db.collection("dados_brutos").createIndex({ "GTIN/PLU": 1 }),
+      db.collection("categorias_depara").createIndex({ "CODBARRAS": 1 })
+    ]);
+    console.log("📊 Índices de dashboard criados/verificados");
+
     // TTL automático para tokens de reset expirados (importação e admin)
     await db.collection("tokens_reset").createIndex({ expira: 1 }, { expireAfterSeconds: 0 });
 
@@ -804,26 +813,32 @@ async function iniciarServidor() {
           return s;
         }
 
-        const [por_loja, por_cat, por_fam, por_dia] = await Promise.all([
+        // Skip category/family lookup when no filters active and categorias_depara is empty
+        const needsCatLookup = !!(cat || familia || aCat || aFamilia);
+        const catCount = needsCatLookup ? 1 :
+          await db.collection("categorias_depara").estimatedDocumentCount();
+
+        const [por_loja, catFamResult, por_dia] = await Promise.all([
           db.collection("dados_brutos").aggregate([
             ...baseStages({ noActLoja: true }),
             { $group: { _id: "$Loja", ...grp } },
             { $sort: { qty: -1 } }
           ]).toArray(),
 
-          db.collection("dados_brutos").aggregate([
-            ...baseStages({ noActCat: true, needsJoin: true }),
-            { $group: { _id: "$_cat", ...grp } },
-            { $match: { _id: { $ne: null } } },
-            { $sort: { qty: -1 } }
-          ]).toArray(),
-
-          db.collection("dados_brutos").aggregate([
-            ...baseStages({ noActFam: true, needsJoin: true }),
-            { $group: { _id: "$_fam", ...grp } },
-            { $match: { _id: { $ne: null } } },
-            { $sort: { qty: -1 } }
-          ]).toArray(),
+          catCount > 0 ? Promise.all([
+            db.collection("dados_brutos").aggregate([
+              ...baseStages({ noActCat: true, needsJoin: true }),
+              { $group: { _id: "$_cat", ...grp } },
+              { $match: { _id: { $ne: null } } },
+              { $sort: { qty: -1 } }
+            ]).toArray(),
+            db.collection("dados_brutos").aggregate([
+              ...baseStages({ noActFam: true, needsJoin: true }),
+              { $group: { _id: "$_fam", ...grp } },
+              { $match: { _id: { $ne: null } } },
+              { $sort: { qty: -1 } }
+            ]).toArray()
+          ]) : Promise.resolve([[], []]),
 
           db.collection("dados_brutos").aggregate([
             ...baseStages({}),
@@ -831,6 +846,8 @@ async function iniciarServidor() {
             { $sort: { _id: 1 } }
           ]).toArray()
         ]);
+
+        const [por_cat, por_fam] = catFamResult;
 
         res.json({
           por_loja: por_loja.map(r => ({ loja: r._id, qty: r.qty, valor: r.valor })),
