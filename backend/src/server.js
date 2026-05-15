@@ -24,9 +24,9 @@ const dbName = process.env.DB_NAME || "soneda_dashboard";
 
 const client = new MongoClient(uri);
 
-// ── CACHE DE RESULTADOS (TTL 5 min) ─────────────────────────────────────────
+// ── CACHE DE RESULTADOS (TTL 15 min) ─────────────────────────────────────────
 const _cache = new Map();
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 15 * 60 * 1000;
 function cacheGet(k) {
   const e = _cache.get(k);
   if (!e) return null;
@@ -240,6 +240,17 @@ async function iniciarServidor() {
     await atualizarFlagsMigracao();
     // Migra campos de performance em background sem bloquear o startup
     migrarCamposBackground();
+    // Pré-aquece o cache com a query mais comum (sem filtros) logo após o startup
+    setTimeout(() => {
+      const { request } = require('http');
+      const PORT_WU = process.env.PORT || 3000;
+      const req = request({ hostname: 'localhost', port: PORT_WU, path: '/api/dashboard/agregados' }, res => {
+        res.resume();
+        console.log('🔥 Cache pré-aquecido');
+      });
+      req.on('error', () => {});
+      req.end();
+    }, 4000);
 
     // Seed usuário inicial de importação a partir das variáveis de ambiente
     const totalUsuarios = await db.collection("usuarios_importacao").countDocuments();
@@ -979,82 +990,81 @@ async function iniciarServidor() {
           valor: { $sum: _migNumericos ? "$_valor_num" : brValorExpr() }
         };
 
-        function baseStages(opt = {}) {
-          const s = [];
-          const m = {};
-          if (ano) m["Ano"] = String(ano);
-          if (mes) m["Mês"] = String(mes);
-          if (loja)                    m["Loja"] = String(loja);
-          if (aLoja && !opt.noActLoja) m["Loja"] = String(aLoja);
-          // Filtro de data usando _data_iso (indexado, YYYY-MM-DD comparação lexicográfica)
-          if ((di || df) && _migData) {
-            const dr = {};
-            if (di) dr.$gte = di;
-            if (df) dr.$lte = df;
-            m["_data_iso"] = dr;
-          }
-          if (Object.keys(m).length) s.push({ $match: m });
-          // Fallback quando docs ainda não têm _data_iso (migração em andamento)
-          if ((di || df) && !_migData) {
-            const conds = [];
-            const isoExpr = { $dateToString: {
-              date: { $ifNull: [
-                { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%d/%m/%Y", onError: null, onNull: null } },
-                { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%Y-%m-%d", onError: null, onNull: null } }
-              ]},
-              format: "%Y-%m-%d", onNull: ""
-            }};
-            if (di) conds.push({ $gte: [isoExpr, di] });
-            if (df) conds.push({ $lte: [isoExpr, df] });
-            s.push({ $match: { $expr: conds.length === 1 ? conds[0] : { $and: conds } } });
-          }
-
-          const cf = [];
-          if (cat)                       cf.push({ $match: { _cat: cat } });
-          if (familia)                   cf.push({ $match: { _fam: familia } });
-          if (aCat    && !opt.noActCat)  cf.push({ $match: { _cat: aCat } });
-          if (aFamilia && !opt.noActFam) cf.push({ $match: { _fam: aFamilia } });
-          if (cf.length || opt.needsJoin) s.push(...joinCat, ...cf);
-          return s;
-        }
-
-        const catCount = await db.collection("categorias_depara").estimatedDocumentCount();
         const AGG_OPTS = { allowDiskUse: true };
 
-        const [por_loja, catFamResult, por_dia] = await Promise.all([
-          db.collection("dados_brutos").aggregate([
-            ...baseStages({ noActLoja: true }),
-            { $group: { _id: "$Loja", ...grp } },
-            { $sort: { qty: -1 } }
-          ], AGG_OPTS).toArray(),
+        // ── Estágios comuns (rodados uma única vez antes do $facet) ──────────
+        const preStages = [];
 
-          catCount > 0 ? Promise.all([
-            db.collection("dados_brutos").aggregate([
-              ...baseStages({ noActCat: true, needsJoin: true }),
+        // Match base aproveita os índices existentes (Ano, Mês, Loja, _data_iso)
+        const baseMatch = {};
+        if (ano)  baseMatch["Ano"]  = String(ano);
+        if (mes)  baseMatch["Mês"]  = String(mes);
+        if (loja) baseMatch["Loja"] = String(loja);
+        if ((di || df) && _migData) {
+          const dr = {};
+          if (di) dr.$gte = di;
+          if (df) dr.$lte = df;
+          baseMatch["_data_iso"] = dr;
+        }
+        if (Object.keys(baseMatch).length) preStages.push({ $match: baseMatch });
+
+        // Fallback de data quando _migData ainda é false
+        if ((di || df) && !_migData) {
+          const conds = [];
+          const isoExpr = { $dateToString: { date: { $ifNull: [
+            { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%d/%m/%Y", onError: null, onNull: null } },
+            { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%Y-%m-%d", onError: null, onNull: null } }
+          ]}, format: "%Y-%m-%d", onNull: "" }};
+          if (di) conds.push({ $gte: [isoExpr, di] });
+          if (df) conds.push({ $lte: [isoExpr, df] });
+          preStages.push({ $match: { $expr: conds.length === 1 ? conds[0] : { $and: conds } } });
+        }
+
+        // Join único (uma vez para todos os facets de cat/fam)
+        const catCount = await db.collection("categorias_depara").estimatedDocumentCount();
+        if (catCount > 0) preStages.push(...joinCat);
+
+        // Filtros dropdown de cat/fam — comuns a todos os branches do facet
+        if (cat)     preStages.push({ $match: { _cat: cat } });
+        if (familia) preStages.push({ $match: { _fam: familia } });
+
+        // Filtros ativos (clique no gráfico) — aplicados seletivamente por branch
+        const mLoja    = aLoja    ? [{ $match: { "Loja": String(aLoja) } }]   : [];
+        const mCat     = aCat     ? [{ $match: { _cat: aCat } }]              : [];
+        const mFamilia = aFamilia ? [{ $match: { _fam: aFamilia } }]          : [];
+
+        // Um único $facet — uma varredura, um join
+        const [facet] = await db.collection("dados_brutos").aggregate([
+          ...preStages,
+          { $facet: {
+            por_loja: [
+              ...mCat, ...mFamilia,
+              { $group: { _id: "$Loja", ...grp } },
+              { $sort: { qty: -1 } }
+            ],
+            por_cat: [
+              ...mLoja, ...mFamilia,
               { $group: { _id: "$_cat", ...grp } },
               { $sort: { qty: -1 } }
-            ], AGG_OPTS).toArray(),
-            db.collection("dados_brutos").aggregate([
-              ...baseStages({ noActFam: true, needsJoin: true }),
+            ],
+            por_fam: [
+              ...mLoja, ...mCat,
               { $group: { _id: "$_fam", ...grp } },
               { $sort: { qty: -1 } }
-            ], AGG_OPTS).toArray()
-          ]) : Promise.resolve([[], []]),
-
-          db.collection("dados_brutos").aggregate([
-            ...baseStages({}),
-            { $group: { _id: "$Data", ...grp } },
-            { $sort: { _id: 1 } }
-          ], AGG_OPTS).toArray()
-        ]);
-
-        const [por_cat, por_fam] = catFamResult;
+            ],
+            por_dia: [
+              ...mLoja, ...mCat, ...mFamilia,
+              { $group: { _id: _migData ? "$_data_iso" : "$Data", ...grp } },
+              { $sort: { _id: 1 } }
+            ]
+          }}
+        ], AGG_OPTS).toArray();
 
         const result = {
-          por_loja: por_loja.map(r => ({ loja: r._id, qty: r.qty, valor: r.valor })),
-          por_cat:  por_cat.map(r  => ({ cat:  r._id || "Sem mapeamento", qty: r.qty, valor: r.valor })),
-          por_fam:  por_fam.map(r  => ({ fam:  r._id || "Sem mapeamento", qty: r.qty, valor: r.valor })),
-          por_dia:  por_dia.map(r  => ({ data: r._id, qty: r.qty, valor: r.valor }))
+          por_loja: (facet?.por_loja || []).map(r => ({ loja: r._id,                         qty: r.qty, valor: r.valor })),
+          por_cat:  (facet?.por_cat  || []).map(r => ({ cat:  r._id || "Sem mapeamento",     qty: r.qty, valor: r.valor })),
+          por_fam:  (facet?.por_fam  || []).map(r => ({ fam:  r._id || "Sem mapeamento",     qty: r.qty, valor: r.valor })),
+          por_dia:  (facet?.por_dia  || []).map(r => ({ data: r._id,                         qty: r.qty, valor: r.valor }))
         };
         cacheSet(cacheKey, result);
         res.json(result);

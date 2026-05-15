@@ -1904,7 +1904,8 @@ function buildAgreParams(prefix, activeObj) {
   return params;
 }
 
-// ── CACHE DE AGREGADOS (sessionStorage, TTL 5 min) ───────────────────────────
+// ── CACHE DE AGREGADOS (sessionStorage, TTL 15 min) ──────────────────────────
+const AGRE_CACHE_TTL = 15 * 60 * 1000;
 function agreCache(key, data) {
   const k = 'agre__' + key;
   if (data !== undefined) {
@@ -1913,7 +1914,7 @@ function agreCache(key, data) {
   }
   try {
     const item = JSON.parse(sessionStorage.getItem(k) || 'null');
-    if (item && (Date.now() - item.t) < 5 * 60 * 1000) return item.d;
+    if (item && (Date.now() - item.t) < AGRE_CACHE_TTL) return item.d;
   } catch(e) {}
   return null;
 }
@@ -1942,17 +1943,17 @@ async function renderizar() {
   fetchKPIs();
 
   if (cached) {
+    // Cache válido → renderiza imediatamente sem buscar no servidor
     const byLoja = toByLoja(cached);
     renderKPIs(byLoja);
     renderGrafico(byLoja);
     renderTabela(byLoja);
     if (cached.por_cat.length > 0) renderCat1(null, cached.por_cat); else renderCat1(filtrar('cat'));
     if (cached.por_fam.length > 0) renderFam1(null, cached.por_fam); else renderFam1(filtrar('familia'));
-  } else {
-    renderKPIs([]);
-    setEstado('Carregando dados...');
+    return;
   }
 
+  setEstado('Carregando dados...');
   try {
     const ag = await fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('f', f_active)}`);
     agreCache(cacheKey, ag);
@@ -1964,11 +1965,9 @@ async function renderizar() {
     if (ag.por_fam.length > 0) renderFam1(null, ag.por_fam); else renderFam1(filtrar('familia'));
   } catch(e) {
     console.warn('Agregados backend indisponíveis:', e.message);
-    if (!cached) {
-      const byLojaChart = agruparPorLoja(filtrar('loja'));
-      renderGrafico(byLojaChart); renderTabela(byLojaChart);
-      renderCat1(filtrar('cat')); renderFam1(filtrar('familia'));
-    }
+    const byLojaChart = agruparPorLoja(filtrar('loja'));
+    renderGrafico(byLojaChart); renderTabela(byLojaChart);
+    renderCat1(filtrar('cat')); renderFam1(filtrar('familia'));
   }
 }
 
@@ -2582,13 +2581,15 @@ async function d2Renderizar() {
   const cached   = agreCache(cacheKey);
 
   if (cached) {
+    // Cache válido → renderiza imediatamente sem buscar no servidor
     const [pd, all] = agToDia(cached);
     d2AtualizarGrafico(pd, all);
-  } else {
-    const d2State = document.getElementById('d2-chart-state');
-    if (d2State) { d2State.style.display = 'flex'; d2State.innerHTML = 'Carregando dados...'; }
-    if (d2Chart) { d2Chart.destroy(); d2Chart = null; }
+    return;
   }
+
+  const d2State = document.getElementById('d2-chart-state');
+  if (d2State) { d2State.style.display = 'flex'; d2State.innerHTML = 'Carregando dados...'; }
+  if (d2Chart) { d2Chart.destroy(); d2Chart = null; }
 
   fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('d2', d2_active)}`).then(ag => {
     agreCache(cacheKey, ag);
@@ -4345,22 +4346,21 @@ async function vRenderizar() {
   };
 
   if (cached) {
+    // Cache válido → renderiza imediatamente sem buscar no servidor
     renderFromAg(cached, toByLoja(cached));
-  } else {
-    vRenderKPIs([], { total_valor: 0, total_lojas: 0 });
+    return;
   }
 
+  vRenderKPIs([], { total_valor: 0, total_lojas: 0 });
   fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('v', v_active)}`).then(ag => {
     agreCache(cacheKey, ag);
     renderFromAg(ag, toByLoja(ag));
   }).catch(e => {
     console.warn('Agregados backend indisponíveis:', e.message);
-    if (!cached) {
-      const byLojaChart = vAgruparPorLoja(vFiltrar('loja'));
-      vRenderKPIs(vAgruparPorLoja(vFiltrar()), null);
-      vRenderGrafico(byLojaChart); vRenderTabela(byLojaChart);
-      vRenderCat1(vFiltrar('cat')); vRenderFam1(vFiltrar('familia'));
-    }
+    const byLojaChart = vAgruparPorLoja(vFiltrar('loja'));
+    vRenderKPIs(vAgruparPorLoja(vFiltrar()), null);
+    vRenderGrafico(byLojaChart); vRenderTabela(byLojaChart);
+    vRenderCat1(vFiltrar('cat')); vRenderFam1(vFiltrar('familia'));
   });
 }
 
