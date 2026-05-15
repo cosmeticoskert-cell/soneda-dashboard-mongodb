@@ -1320,7 +1320,7 @@ async function iniciarServidor() {
     // ─────────────────────────────────────
     // RESSINCRONIZAR DE/PARA (quando categorias_depara é alterado fora do import)
     // ─────────────────────────────────────
-    app.post("/api/admin/ressincronizar-depara", verificarTokenAdmin, async (req, res) => {
+    app.post("/api/admin/ressincronizar-depara", verificarToken, async (req, res) => {
       try {
         catDeParaInMem = null;
         cacheClear();
