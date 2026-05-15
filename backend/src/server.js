@@ -167,6 +167,43 @@ function brValorExpr() {
 }
 
 // ─────────────────────────────────────────
+// RECALCULO _cat/_fam EM BACKGROUND
+// ─────────────────────────────────────────
+async function recalcularCatFamBackground(db) {
+  const cats = await db.collection("categorias_depara").find({}).toArray();
+  const catLookup = {};
+  cats.forEach(c => {
+    const ean = String(c.CODBARRAS || '').trim();
+    if (ean) catLookup[ean] = { cat: c.CATEGORIA || null, fam: c.FAMILIA || null };
+  });
+
+  const cursor = db.collection("dados_brutos")
+    .find({}, { projection: { _id: 1, "GTIN/PLU": 1 } });
+  const ops = [];
+  for await (const doc of cursor) {
+    const gtin  = String(doc['GTIN/PLU'] || '').trim();
+    const entry = catLookup[gtin] || null;
+    ops.push({ updateOne: {
+      filter: { _id: doc._id },
+      update: { $set: { _cat: entry ? (entry.cat || null) : null,
+                        _fam: entry ? (entry.fam || null) : null } }
+    }});
+    if (ops.length >= 1000) {
+      await db.collection("dados_brutos").bulkWrite(ops, { ordered: false });
+      ops.length = 0;
+    }
+  }
+  if (ops.length > 0) {
+    await db.collection("dados_brutos").bulkWrite(ops, { ordered: false });
+  }
+
+  catDeParaInMem = null;
+  _migCat = true;
+  _cache.clear();
+  console.log('✅ _cat/_fam recalculados após importação de categorias');
+}
+
+// ─────────────────────────────────────────
 // SERVIDOR
 // ─────────────────────────────────────────
 async function iniciarServidor() {
@@ -1139,6 +1176,11 @@ async function iniciarServidor() {
           });
           catDeParaInMem = null; // força recarregamento do mapa de categorias
           cacheClear();
+
+          // Recalcula _cat/_fam em dados_brutos em background (sem bloquear a resposta)
+          recalcularCatFamBackground(db).catch(e =>
+            console.warn('⚠️ Erro ao recalcular _cat/_fam em background:', e.message)
+          );
         }
 
         res.json({ ok: true, inserido, ultimo: isUltimo, mensagem: isUltimo ? "Categorias importadas" : "Lote salvo" });

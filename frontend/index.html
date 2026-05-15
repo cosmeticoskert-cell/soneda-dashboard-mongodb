@@ -2104,7 +2104,7 @@ function cat1OrdenarPor(coluna) {
 function agruparPorFamilia(data) {
   const map = {};
   data.forEach(r => {
-    const fam = getFamilia(r) || 'SEM FAMÍLIA';
+    const fam = getFamilia(r) || 'Sem mapeamento';
     const qty = parseBR(col(r,'Venda (Qtd)','Venda Nf Quantidade','Venda Pdv Quantidade'));
     if (!map[fam]) map[fam] = { fam, qty: 0 };
     map[fam].qty += qty;
@@ -2766,7 +2766,7 @@ function renderFam2(data) {
   const nomeLoja = loja ? (document.getElementById('d2-loja').selectedOptions[0]?.text || '') : 'Todas as lojas';
   document.getElementById('fam2-sub').textContent = ([ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos') + ' · ' + nomeLoja;
 
-  const fams = [...new Set(data.map(r => getFamilia(r) || 'SEM FAMÍLIA').filter(Boolean))].sort();
+  const fams = [...new Set(data.map(r => getFamilia(r) || 'Sem mapeamento').filter(Boolean))].sort();
   const dias  = [...new Set(data.map(r => {
     const dt = d2ParseData(col(r,'Data','data'));
     return dt ? dataParaISO(dt) : null;
@@ -2782,7 +2782,7 @@ function renderFam2(data) {
 
   const mapFamDia = {};
   data.forEach(r => {
-    const f  = getFamilia(r) || 'SEM FAMÍLIA';
+    const f  = getFamilia(r) || 'Sem mapeamento';
     const dt = d2ParseData(col(r,'Data','data')); if (!dt) return;
     const dk = dataParaISO(dt);
     const qty = parseBR(col(r,'Venda (Qtd)','Venda Nf Quantidade','Venda Pdv Quantidade'));
@@ -2848,9 +2848,21 @@ function renderFam2(data) {
     const cls = fam2Sort.col === key ? ` class="sort-${fam2Sort.dir}"` : '';
     return `<th${cls} onclick="fam2OrdenarPor('${key}')">${label}</th>`;
   };
-  const linhas = totFam.map(r => {
+  const SEM_MAP_F2 = 'Sem mapeamento';
+  const famOrdenadas = [
+    ...totFam.filter(r => r.fam !== SEM_MAP_F2),
+    ...totFam.filter(r => r.fam === SEM_MAP_F2)
+  ];
+  const linhas = famOrdenadas.map(r => {
     const pct  = totalGeral > 0 ? ((r.qty/totalGeral)*100).toFixed(1) : 0;
     const barW = ((r.qty/maxQ)*100).toFixed(1);
+    if (r.fam === SEM_MAP_F2) {
+      return `<tr title="Estes registros não têm família no De/Para de Categorias" style="opacity:0.55;font-style:italic">
+        <td class="td-nome" style="color:var(--text-dim)">⚠ Sem mapeamento</td>
+        <td class="td-qty" style="color:var(--text-dim)">${r.qty.toLocaleString('pt-BR')}</td>
+        <td><span style="font-size:.78rem;color:var(--text-dim);font-family:'DM Mono',monospace">${pct}%</span></td>
+      </tr>`;
+    }
     return `<tr>
       <td class="td-nome">${r.fam}</td>
       <td class="td-qty">${r.qty.toLocaleString('pt-BR')}</td>
@@ -4029,20 +4041,22 @@ function vCat1OrdenarPor(coluna) {
 
 
 function vRenderFam1(data, preAg) {
+  const SEM_MAP_V = 'Sem mapeamento';
   let byFam;
   if (preAg) {
-    byFam = preAg.map(r => ({ fam: r.fam || 'SEM FAMÍLIA', val: r.valor })).filter(r => r.fam !== 'SEM FAMÍLIA' && r.fam !== null);
+    byFam = preAg.map(r => ({ fam: r.fam || SEM_MAP_V, val: r.valor }));
   } else {
     const map = {};
     (data || []).forEach(r => {
-      const fam = getFamilia(r);
-      if (!fam) return;
+      const fam = getFamilia(r) || SEM_MAP_V;
       const val = parseBR(col(r,'Venda (R$)','Venda(R$)','Venda R$','venda (r$)','Venda Valor','Venda NF Valor','Venda PDV Valor','venda_valor','Valor Venda'));
       if (!map[fam]) map[fam] = { fam, val: 0 };
       map[fam].val += val;
     });
     byFam = Object.values(map);
   }
+  // Separa famílias reais das sem mapeamento (para o gráfico mostra só as reais)
+  let byFamChart = byFam.filter(r => r.fam !== SEM_MAP_V);
   const total = byFam.reduce((s,r) => s + r.val, 0);
 
   const ano = document.getElementById('v-ano').value;
@@ -4064,7 +4078,7 @@ function vRenderFam1(data, preAg) {
   }
   if (state) state.style.display = 'none';
 
-  byFam = [...byFam].sort((a,b) => {
+  byFamChart = [...byFamChart].sort((a,b) => {
     let va, vb;
     if (vFam1Sort.col === 'fam') { va = a.fam.toLowerCase(); vb = b.fam.toLowerCase(); }
     else if (vFam1Sort.col === 'pct') { va = total > 0 ? a.val / total : 0; vb = total > 0 ? b.val / total : 0; }
@@ -4074,6 +4088,8 @@ function vRenderFam1(data, preAg) {
     if (va > vb) return vFam1Sort.dir === 'asc' ? 1 : -1;
     return 0;
   });
+  // Tabela = famílias classificadas (já ordenadas) + "Sem mapeamento" sempre no fim
+  const byFamTable = [...byFamChart, ...byFam.filter(r => r.fam === SEM_MAP_V)];
 
   if (vFam1Chart) { vFam1Chart.destroy(); vFam1Chart = null; }
   const oldVFam1Canvas = document.getElementById('v-fam1-canvas');
@@ -4086,11 +4102,11 @@ function vRenderFam1(data, preAg) {
   vFam1Chart = new Chart(canvas, {
     type: 'bar',
     data: {
-      labels: byFam.map(r => r.fam),
+      labels: byFamChart.map(r => r.fam),
       datasets: [{
-        data: byFam.map(r => r.val),
-        backgroundColor: byFam.map((r,i) => vSelF ? (r.fam === vSelF ? PALETTE[i % PALETTE.length] + 'ee' : 'rgba(37,42,58,0.45)') : PALETTE[i % PALETTE.length] + 'cc'),
-        borderColor: byFam.map((r,i) => vSelF ? (r.fam === vSelF ? PALETTE[i % PALETTE.length] : 'rgba(37,42,58,0.2)') : PALETTE[i % PALETTE.length]),
+        data: byFamChart.map(r => r.val),
+        backgroundColor: byFamChart.map((r,i) => vSelF ? (r.fam === vSelF ? PALETTE[i % PALETTE.length] + 'ee' : 'rgba(37,42,58,0.45)') : PALETTE[i % PALETTE.length] + 'cc'),
+        borderColor: byFamChart.map((r,i) => vSelF ? (r.fam === vSelF ? PALETTE[i % PALETTE.length] : 'rgba(37,42,58,0.2)') : PALETTE[i % PALETTE.length]),
         borderWidth: 1.5,
         borderRadius: 6
       }]
@@ -4099,7 +4115,7 @@ function vRenderFam1(data, preAg) {
       responsive: true,
       maintainAspectRatio: false,
       onClick: (evt, elements) => {
-        if (elements.length > 0) setTimeout(() => vSetFilter('familia', byFam[elements[0].index].fam), 0);
+        if (elements.length > 0) setTimeout(() => vSetFilter('familia', byFamChart[elements[0].index].fam), 0);
       },
       plugins: {
         legend: { display: false },
@@ -4118,7 +4134,7 @@ function vRenderFam1(data, preAg) {
       scales: {
         x: {
           ticks: {
-            color: ctx => vSelF ? (byFam[ctx.index]?.fam === vSelF ? '#4fffb0' : '#3a4060') : '#8891aa',
+            color: ctx => vSelF ? (byFamChart[ctx.index]?.fam === vSelF ? '#4fffb0' : '#3a4060') : '#8891aa',
             font:{family:'DM Mono',size:9},
             maxRotation:35,
             autoSkip:false
@@ -4135,17 +4151,25 @@ function vRenderFam1(data, preAg) {
 
   canvas.style.cursor = 'pointer';
 
-  const maxV = Math.max(...byFam.map(r => r.val), 1);
+  const maxV = Math.max(...byFamTable.map(r => r.val), 1);
   const th = (label, key) => {
     const cls = vFam1Sort.col === key ? ` class="sort-${vFam1Sort.dir}"` : '';
     return `<th${cls} onclick="vFam1OrdenarPor('${key}')">${label}</th>`;
   };
 
-  const linhas = byFam.map(r => {
+  const linhas = byFamTable.map(r => {
     const pct  = total > 0 ? ((r.val / total) * 100).toFixed(1) : 0;
     const barW = ((r.val / maxV) * 100).toFixed(1);
-    const ativo = normalizeFilterValue(vSelF) === normalizeFilterValue(r.fam) ? ' row-active' : '';
 
+    if (r.fam === SEM_MAP_V) {
+      return `<tr title="Estes registros não têm família no De/Para de Categorias" style="opacity:0.55;font-style:italic">
+        <td class="td-nome" style="color:var(--text-dim)">⚠ Sem mapeamento</td>
+        <td class="td-qty" style="color:var(--text-dim)">${vFmtR(r.val)}</td>
+        <td><span style="font-size:.78rem;color:var(--text-dim);font-family:'DM Mono',monospace">${pct}%</span></td>
+      </tr>`;
+    }
+
+    const ativo = normalizeFilterValue(vSelF) === normalizeFilterValue(r.fam) ? ' row-active' : '';
     return `<tr class="clickable-row${ativo}" onclick="vSetFilter('familia',this.dataset.v)" data-v="${r.fam.replace(/"/g,'&quot;')}">
       <td class="td-nome">${r.fam}</td>
       <td class="td-qty" style="color:var(--accent2)">${vFmtR(r.val)}</td>
