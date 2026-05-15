@@ -39,6 +39,7 @@ function cacheClear() { _cache.clear(); }
 // ── FLAGS DE OTIMIZAÇÃO ──────────────────────────────────────────────────────
 let _migNumericos = false; // true quando dados têm _qtd_num/_valor_num pré-computados
 let _migGtin      = false; // true quando dados têm _gtin pré-computado (join indexado)
+let _migData      = false; // true quando dados têm _data_iso pré-computado (filtro de data indexado)
 
 // ─────────────────────────────────────────
 // UPLOAD
@@ -179,19 +180,21 @@ async function iniciarServidor() {
 
     // ── FUNÇÕES DE OTIMIZAÇÃO ────────────────────────────────────────────────
     async function atualizarFlagsMigracao() {
-      const [s1, s2] = await Promise.all([
-        db.collection("dados_brutos").findOne({ _qtd_num: { $exists: true } }, { projection: { _id: 1 } }),
-        db.collection("dados_brutos").findOne({ _gtin:    { $exists: true } }, { projection: { _id: 1 } })
+      const [s1, s2, s3] = await Promise.all([
+        db.collection("dados_brutos").findOne({ _qtd_num:  { $exists: true } }, { projection: { _id: 1 } }),
+        db.collection("dados_brutos").findOne({ _gtin:     { $exists: true } }, { projection: { _id: 1 } }),
+        db.collection("dados_brutos").findOne({ _data_iso: { $exists: true } }, { projection: { _id: 1 } })
       ]);
       _migNumericos = !!s1;
       _migGtin      = !!s2;
-      console.log(`📊 Otimizações ativas: numéricos=${_migNumericos}, gtin=${_migGtin}`);
+      _migData      = !!s3;
+      console.log(`📊 Otimizações ativas: numéricos=${_migNumericos}, gtin=${_migGtin}, data=${_migData}`);
     }
 
     // Migração automática de campos de performance (roda inteiramente no MongoDB, não bloqueia Node.js)
     async function migrarCamposBackground() {
       try {
-        const [rNum, rGtin] = await Promise.all([
+        const [rNum, rGtin, rData] = await Promise.all([
           db.collection("dados_brutos").updateMany(
             { _qtd_num: { $exists: false } },
             [{ $set: { _qtd_num: brToDouble({ $getField: "Venda (Qtd)" }), _valor_num: brValorExpr() } }]
@@ -199,13 +202,35 @@ async function iniciarServidor() {
           db.collection("dados_brutos").updateMany(
             { _gtin: { $exists: false } },
             [{ $set: { _gtin: { $toString: { $ifNull: [{ $getField: "GTIN/PLU" }, ""] } } } }]
+          ),
+          // Converte Data (DD/MM/YYYY ou YYYY-MM-DD) para string ISO YYYY-MM-DD (ordenável)
+          db.collection("dados_brutos").updateMany(
+            { _data_iso: { $exists: false } },
+            [{ $set: {
+              _data_iso: {
+                $let: {
+                  vars: { d: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } } },
+                  in: {
+                    $dateToString: {
+                      date: { $ifNull: [
+                        { $dateFromString: { dateString: "$$d", format: "%d/%m/%Y", onError: null, onNull: null } },
+                        { $dateFromString: { dateString: "$$d", format: "%Y-%m-%d", onError: null, onNull: null } }
+                      ]},
+                      format: "%Y-%m-%d",
+                      onNull: null
+                    }
+                  }
+                }
+              }
+            }}]
           )
         ]);
-        if (rNum.modifiedCount > 0 || rGtin.modifiedCount > 0) {
-          _migNumericos = true;
-          _migGtin      = true;
+        if (rNum.modifiedCount > 0)  { _migNumericos = true; }
+        if (rGtin.modifiedCount > 0) { _migGtin      = true; }
+        if (rData.modifiedCount > 0) { _migData      = true; }
+        if (rNum.modifiedCount > 0 || rGtin.modifiedCount > 0 || rData.modifiedCount > 0) {
           cacheClear();
-          console.log(`✅ Auto-migração: ${rNum.modifiedCount} numéricos, ${rGtin.modifiedCount} gtin`);
+          console.log(`✅ Auto-migração: ${rNum.modifiedCount} numéricos, ${rGtin.modifiedCount} gtin, ${rData.modifiedCount} data_iso`);
         }
       } catch(e) {
         console.warn('⚠️ Auto-migração em background falhou:', e.message);
@@ -283,6 +308,7 @@ async function iniciarServidor() {
       db.collection("dados_brutos").createIndex({ "Loja": 1 }),
       db.collection("dados_brutos").createIndex({ "GTIN/PLU": 1 }),
       db.collection("dados_brutos").createIndex({ "_gtin": 1 }),
+      db.collection("dados_brutos").createIndex({ "_data_iso": 1 }),
       db.collection("categorias_depara").createIndex({ "CODBARRAS": 1 })
     ]);
     console.log("📊 Índices de dashboard criados/verificados");
@@ -854,29 +880,48 @@ async function iniciarServidor() {
         if (cached) return res.json(cached);
 
         const { ano, mes, loja } = req.query;
+        const di = req.query.di || null;
+        const df = req.query.df || null;
         const match = {};
         if (ano)  match["Ano"]   = String(ano);
         if (mes)  match["Mês"]   = String(mes);
         if (loja) match["Loja"]  = String(loja);
+        if ((di || df) && _migData) {
+          const dr = {};
+          if (di) dr.$gte = di;
+          if (df) dr.$lte = df;
+          match["_data_iso"] = dr;
+        }
 
         const matchStage = Object.keys(match).length > 0 ? [{ $match: match }] : [];
+        // Fallback de data quando _migData=false
+        const dateStage = (di || df) && !_migData ? (() => {
+          const isoExpr = { $dateToString: { date: { $ifNull: [
+            { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%d/%m/%Y", onError: null, onNull: null } },
+            { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%Y-%m-%d", onError: null, onNull: null } }
+          ]}, format: "%Y-%m-%d", onNull: "" }};
+          const conds = [];
+          if (di) conds.push({ $gte: [isoExpr, di] });
+          if (df) conds.push({ $lte: [isoExpr, df] });
+          return [{ $match: { $expr: conds.length === 1 ? conds[0] : { $and: conds } } }];
+        })() : [];
 
         const [resumoArr, topLojaArr] = await Promise.all([
           db.collection("dados_brutos").aggregate([
-            ...matchStage,
+            ...matchStage, ...dateStage,
             {
               $group: {
                 _id: null,
-                total_vendido: { $sum: brToDouble({ $getField: "Venda (Qtd)" }) },
-                total_valor:   { $sum: brValorExpr() },
+                total_vendido: { $sum: _migNumericos ? "$_qtd_num"  : brToDouble({ $getField: "Venda (Qtd)" }) },
+                total_valor:   { $sum: _migNumericos ? "$_valor_num" : brValorExpr() },
                 lojas:         { $addToSet: "$Loja" }
               }
             },
             { $project: { _id: 0, total_vendido: 1, total_valor: 1, total_lojas: { $size: "$lojas" } } }
           ]).toArray(),
           db.collection("dados_brutos").aggregate([
-            ...matchStage,
-            { $group: { _id: "$Loja", qty: { $sum: brToDouble({ $getField: "Venda (Qtd)" }) } } },
+            ...matchStage, ...dateStage,
+            { $group: { _id: "$Loja", qty: { $sum: _migNumericos ? "$_qtd_num" : brToDouble({ $getField: "Venda (Qtd)" }) } } },
             { $sort: { qty: -1 } },
             { $limit: 1 }
           ]).toArray()
@@ -902,6 +947,8 @@ async function iniciarServidor() {
         if (cached) return res.json(cached);
 
         const { ano, mes, loja, cat, familia } = req.query;
+        const di       = req.query.di            || null; // data início YYYY-MM-DD
+        const df       = req.query.df            || null; // data fim    YYYY-MM-DD
         const aLoja    = req.query.ativo_loja    || null;
         const aCat     = req.query.ativo_cat     || null;
         const aFamilia = req.query.ativo_familia || null;
@@ -939,9 +986,29 @@ async function iniciarServidor() {
           if (mes) m["Mês"] = String(mes);
           if (loja)                    m["Loja"] = String(loja);
           if (aLoja && !opt.noActLoja) m["Loja"] = String(aLoja);
-          if (Object.keys(m).length)   s.push({ $match: m });
+          // Filtro de data usando _data_iso (indexado, YYYY-MM-DD comparação lexicográfica)
+          if ((di || df) && _migData) {
+            const dr = {};
+            if (di) dr.$gte = di;
+            if (df) dr.$lte = df;
+            m["_data_iso"] = dr;
+          }
+          if (Object.keys(m).length) s.push({ $match: m });
+          // Fallback quando docs ainda não têm _data_iso (migração em andamento)
+          if ((di || df) && !_migData) {
+            const conds = [];
+            const isoExpr = { $dateToString: {
+              date: { $ifNull: [
+                { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%d/%m/%Y", onError: null, onNull: null } },
+                { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%Y-%m-%d", onError: null, onNull: null } }
+              ]},
+              format: "%Y-%m-%d", onNull: ""
+            }};
+            if (di) conds.push({ $gte: [isoExpr, di] });
+            if (df) conds.push({ $lte: [isoExpr, df] });
+            s.push({ $match: { $expr: conds.length === 1 ? conds[0] : { $and: conds } } });
+          }
 
-          // Join sempre ocorre em tempo de query — sem campos pré-computados em dados_brutos
           const cf = [];
           if (cat)                       cf.push({ $match: { _cat: cat } });
           if (familia)                   cf.push({ $match: { _fam: familia } });
@@ -1089,7 +1156,7 @@ async function iniciarServidor() {
           });
           if (opcoes.extraCampos) Object.assign(registro, opcoes.extraCampos);
 
-          // Pré-computa campos numéricos e _gtin para join indexado em tempo de query
+          // Pré-computa campos numéricos, _gtin e _data_iso para queries indexadas
           if (colecao.collectionName === 'dados_brutos') {
             const qtdRaw = registro['Venda (Qtd)'] ?? registro['Venda Nf Quantidade'] ?? registro['Venda Pdv Quantidade'] ?? 0;
             const valRaw = registro['Venda (R$)']  ?? registro['Venda Pdv Valor']      ?? registro['Venda Nf Valor']      ?? 0;
@@ -1098,6 +1165,17 @@ async function iniciarServidor() {
             registro._qtd_num   = typeof qtd === 'number' ? qtd : (parseFloat(String(qtd)) || 0);
             registro._valor_num = typeof val === 'number' ? val : (parseFloat(String(val)) || 0);
             registro._gtin      = String(registro['GTIN/PLU'] || '').trim() || null;
+            // Converte Data (DD/MM/AAAA ou AAAA-MM-DD) para string ISO AAAA-MM-DD
+            const dataStr = String(registro['Data'] || '').trim();
+            const brMatch  = dataStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            const isoMatch = dataStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (brMatch) {
+              registro._data_iso = `${brMatch[3]}-${brMatch[2].padStart(2,'0')}-${brMatch[1].padStart(2,'0')}`;
+            } else if (isoMatch) {
+              registro._data_iso = dataStr;
+            } else {
+              registro._data_iso = null;
+            }
           }
 
           resultados.push(registro);
@@ -1266,7 +1344,7 @@ async function iniciarServidor() {
     // ─────────────────────────────────────
     app.post("/api/admin/migrar-campos", verificarTokenAdmin, async (req, res) => {
       try {
-        let totalNum = 0, totalGtin = 0;
+        let totalNum = 0, totalGtin = 0, totalData = 0;
 
         // 1. Pré-computa _qtd_num e _valor_num via pipeline MongoDB (server-side, sem transferência)
         const numResult = await db.collection("dados_brutos").updateMany(
@@ -1285,12 +1363,36 @@ async function iniciarServidor() {
         );
         totalGtin = gtinResult.modifiedCount;
 
+        // 3. Pré-computa _data_iso (YYYY-MM-DD) a partir de Data (DD/MM/YYYY ou YYYY-MM-DD)
+        const dataResult = await db.collection("dados_brutos").updateMany(
+          { _data_iso: { $exists: false } },
+          [{ $set: {
+            _data_iso: {
+              $let: {
+                vars: { d: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } } },
+                in: {
+                  $dateToString: {
+                    date: { $ifNull: [
+                      { $dateFromString: { dateString: "$$d", format: "%d/%m/%Y", onError: null, onNull: null } },
+                      { $dateFromString: { dateString: "$$d", format: "%Y-%m-%d", onError: null, onNull: null } }
+                    ]},
+                    format: "%Y-%m-%d",
+                    onNull: null
+                  }
+                }
+              }
+            }
+          }}]
+        );
+        totalData = dataResult.modifiedCount;
+
         _migNumericos = true;
         _migGtin      = true;
+        _migData      = true;
         cacheClear();
 
-        console.log(`✅ Migração concluída: ${totalNum} numéricos, ${totalGtin} gtin`);
-        res.json({ ok: true, numericosAtualizados: totalNum, gtinAtualizados: totalGtin });
+        console.log(`✅ Migração concluída: ${totalNum} numéricos, ${totalGtin} gtin, ${totalData} data_iso`);
+        res.json({ ok: true, numericosAtualizados: totalNum, gtinAtualizados: totalGtin, dataIsoAtualizados: totalData });
       } catch(e) {
         console.error("❌ Erro na migração:", e.message);
         res.status(500).json({ erro: "Erro na migração", detalhe: e.message });

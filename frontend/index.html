@@ -1889,10 +1889,13 @@ function buildAgreParams(prefix, activeObj) {
   const g = id => document.getElementById(id)?.value || '';
   const params = new URLSearchParams();
   const ano = g(`${prefix}-ano`), mes = g(`${prefix}-mes`),
+        di  = g(`${prefix}-di`),  df  = g(`${prefix}-df`),
         loja = g(`${prefix}-loja`), cat = g(`${prefix}-cat`),
         familia = g(`${prefix}-familia`);
   if (ano)    params.set('ano', ano);
   if (mes)    params.set('mes', mes);
+  if (di)     params.set('di', di);
+  if (df)     params.set('df', df);
   if (loja)   params.set('loja', loja);
   if (cat)    params.set('cat', cat);
   if (familia) params.set('familia', familia);
@@ -1978,10 +1981,14 @@ function renderKPIs(byLoja) {
 async function fetchKPIs() {
   const ano  = document.getElementById('f-ano').value;
   const mes  = document.getElementById('f-mes').value;
+  const di   = document.getElementById('f-di').value;
+  const df   = document.getElementById('f-df').value;
   const loja = document.getElementById('f-loja').value;
   const params = new URLSearchParams();
   if (ano)  params.set('ano', ano);
   if (mes)  params.set('mes', mes);
+  if (di)   params.set('di', di);
+  if (df)   params.set('df', df);
   if (loja) params.set('loja', loja);
   try {
     const kpis = await fetchJSON(`${API_BASE}/api/dashboard/kpis?${params}`);
