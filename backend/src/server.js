@@ -837,23 +837,18 @@ async function iniciarServidor() {
         const aCat     = req.query.ativo_cat     || null;
         const aFamilia = req.query.ativo_familia || null;
 
-        // Join com categorias_depara em tempo de query:
-        // _migGtin=true → localField/_gtin usa índice de categorias_depara.CODBARRAS (rápido)
-        // _migGtin=false → $expr sem índice (compatibilidade com docs importados antes da migração)
-        const joinCat = _migGtin
-          ? [
-              { $lookup: { from: "categorias_depara", localField: "_gtin", foreignField: "CODBARRAS", as: "_c" } },
-              { $addFields: { _cat: { $arrayElemAt: ["$_c.CATEGORIA", 0] }, _fam: { $arrayElemAt: ["$_c.FAMILIA", 0] } } }
-            ]
-          : [
-              { $lookup: {
-                  from: "categorias_depara",
-                  let: { gtin: { $getField: "GTIN/PLU" } },
-                  pipeline: [{ $match: { $expr: { $eq: ["$$gtin", "$CODBARRAS"] } } }],
-                  as: "_c"
-              }},
-              { $addFields: { _cat: { $arrayElemAt: ["$_c.CATEGORIA", 0] }, _fam: { $arrayElemAt: ["$_c.FAMILIA", 0] } } }
-            ];
+        // Join com categorias_depara em tempo de query.
+        // Usa _gtin quando disponível (docs novos), cai para GTIN/PLU para docs antigos.
+        // Um único caminho garante consistência independente do estado da migração.
+        const joinCat = [
+          { $lookup: {
+              from: "categorias_depara",
+              let: { gtin: { $ifNull: ["$_gtin", { $getField: "GTIN/PLU" }] } },
+              pipeline: [{ $match: { $expr: { $eq: ["$$gtin", "$CODBARRAS"] } } }],
+              as: "_c"
+          }},
+          { $addFields: { _cat: { $arrayElemAt: ["$_c.CATEGORIA", 0] }, _fam: { $arrayElemAt: ["$_c.FAMILIA", 0] } } }
+        ];
 
         // Usa campos numéricos pré-computados quando disponíveis
         const grp = {
