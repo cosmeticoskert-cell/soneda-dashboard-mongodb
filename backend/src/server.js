@@ -1176,6 +1176,7 @@ async function iniciarServidor() {
           });
           catDeParaInMem = null; // força recarregamento do mapa de categorias
           cacheClear();
+          _migCat = false; // força $lookup enquanto _cat/_fam são recomputados
 
           // Recalcula _cat/_fam em dados_brutos em background (sem bloquear a resposta)
           recalcularCatFamBackground(db).catch(e =>
@@ -1313,6 +1314,23 @@ async function iniciarServidor() {
       } catch(e) {
         console.error("❌ Erro na migração:", e.message);
         res.status(500).json({ erro: "Erro na migração", detalhe: e.message });
+      }
+    });
+
+    // ─────────────────────────────────────
+    // RESSINCRONIZAR DE/PARA (quando categorias_depara é alterado fora do import)
+    // ─────────────────────────────────────
+    app.post("/api/admin/ressincronizar-depara", verificarTokenAdmin, async (req, res) => {
+      try {
+        catDeParaInMem = null;
+        cacheClear();
+        _migCat = false; // durante o recalculo, queries usam $lookup (dados corretos)
+        console.log('🔄 Iniciando ressincronização De/Para...');
+        await recalcularCatFamBackground(db); // síncrono aqui — aguarda terminar
+        res.json({ ok: true, mensagem: 'De/Para ressincronizado com sucesso.' });
+      } catch(e) {
+        console.error('❌ Erro ao ressincronizar De/Para:', e.message);
+        res.status(500).json({ erro: 'Erro ao ressincronizar De/Para', detalhe: e.message });
       }
     });
 

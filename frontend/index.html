@@ -447,6 +447,7 @@
         <button class="btn-import" onclick="enviarCSV('csvLojas', '/api/importar/lojas-depara')">Importar</button>
       </div>
       <button class="btn-import secondary" onclick="recarregarDados()">Atualizar painel</button>
+      <button class="btn-import secondary" onclick="ressincronizarDePara()" title="Use após alterar o De/Para de Categorias diretamente no banco. Propaga as mudanças para todos os registros de vendas.">Ressincronizar De/Para</button>
       <div id="import-status" class="import-status"></div>
     </div>
   </div>
@@ -1449,6 +1450,49 @@ async function enviarCSV(inputId, rota) {
 
 function recarregarDados() {
   window.location.reload();
+}
+
+async function ressincronizarDePara() {
+  const status = document.getElementById('import-status');
+  const token  = admGetToken();
+  if (!token) {
+    status.textContent = 'Faça login como administrador para ressincronizar.';
+    status.className   = 'import-status err';
+    return;
+  }
+  if (!confirm('Isso vai propagar as mudanças do De/Para de Categorias para todos os registros de vendas.\nPode demorar alguns minutos. Continuar?')) return;
+
+  status.innerHTML = '<span style="font-family:\'DM Mono\',monospace">Ressincronizando De/Para... aguarde, pode levar alguns minutos.</span>';
+  status.className = 'import-status';
+
+  // Limpa cache do frontend imediatamente
+  Object.keys(sessionStorage).filter(k => k.startsWith('agre__')).forEach(k => sessionStorage.removeItem(k));
+
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 9 * 60 * 1000); // 9 min max
+
+    const res  = await fetch(`${API_BASE}/api/admin/ressincronizar-depara`, {
+      method:  'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      signal:  controller.signal
+    });
+    clearTimeout(t);
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.erro || data.detalhe || 'Erro desconhecido');
+
+    status.innerHTML = `✔ ${data.mensagem || 'Ressincronização concluída.'} Recarregando painel...`;
+    status.className = 'import-status ok';
+    setTimeout(() => recarregarDados(), 1500);
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      status.textContent = 'Tempo esgotado. O processo ainda pode estar rodando no servidor — aguarde e atualize o painel em alguns minutos.';
+    } else {
+      status.textContent = `Erro ao ressincronizar: ${e.message}`;
+    }
+    status.className = 'import-status err';
+  }
 }
 
 // ── INICIALIZAÇÃO ─────────────────────────────────────────────────────────────
