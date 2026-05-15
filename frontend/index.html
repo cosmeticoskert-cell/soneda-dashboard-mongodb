@@ -1175,6 +1175,8 @@ let deParaMap    = {};
 let catMap       = {};
 let familiaMap   = {};
 let produtoMap   = {};
+let catList      = []; // lista canônica de categorias vinda do backend
+let familiaList  = []; // lista canônica de famílias vinda do backend
 let chartInst      = null;
 let vChartInst     = null;
 let d2Chart        = null;
@@ -1527,11 +1529,13 @@ async function ressincronizarDePara() {
 async function init() {
   try {
     
-    const [brutosRes, deParaRes, catRes, resumoRes] = await Promise.allSettled([
+    const [brutosRes, deParaRes, catRes, resumoRes, catsRes, famsRes] = await Promise.allSettled([
       fetchJSON('/api/dados-brutos?limite=5000'),
       fetchJSON('/api/lojas-depara'),
       fetchJSON('/api/categorias-depara'),
-      fetchJSON('/api/dashboard/resumo')
+      fetchJSON('/api/dashboard/resumo'),
+      fetchJSON('/api/dashboard/categorias'),
+      fetchJSON('/api/dashboard/familias')
     ]);
 
     if (deParaRes.status === 'fulfilled') {
@@ -1581,9 +1585,23 @@ async function init() {
             if (valido(vProd)) produtoMap[ean]  = vProd;
           });
         }
-        console.log(`[Categorias] ${Object.keys(catMap).length} categorias e ${Object.keys(familiaMap).length} famílias carregadas`);
+        console.log(`[Categorias] ${Object.keys(catMap).length} EANs com categoria, ${Object.keys(familiaMap).length} EANs com família carregados`);
       } catch(e) { console.warn('Categorias não carregadas:', e.message); }
     } else { console.warn('Categorias não carregadas:', catRes.reason?.message); }
+
+    // Listas canônicas de categorias e famílias vindas diretamente do backend
+    if (catsRes.status === 'fulfilled') {
+      try {
+        catList = (Array.isArray(catsRes.value) ? catsRes.value : [])
+          .map(r => r._id).filter(v => v && v !== '-' && v !== '–').sort();
+      } catch(e) {}
+    }
+    if (famsRes.status === 'fulfilled') {
+      try {
+        familiaList = (Array.isArray(famsRes.value) ? famsRes.value : [])
+          .map(r => r._id).filter(v => v && v !== '-' && v !== '–').sort();
+      } catch(e) {}
+    }
 
     if (brutosRes.status !== 'fulfilled') {
       throw new Error(brutosRes.reason?.message || 'Não foi possível buscar /api/dados-brutos');
@@ -1750,15 +1768,14 @@ function construirFiltros() {
   meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
 
   const lojas = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(l => l && deParaMap[l]))].sort((a,b) => +a - +b);
-  const cats  = [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
+  const cats    = catList.length    ? catList    : [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
+  const familias = familiaList.length ? familiaList : [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
 
   const sA = document.getElementById('f-ano');
   const sM = document.getElementById('f-mes');
   const sL = document.getElementById('f-loja');
   const sC = document.getElementById('f-cat');
   const sF = document.getElementById('f-familia');
-
-  const familias = [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
 
   sA.innerHTML = '<option value="">Todos</option>' + anos.map(a => `<option>${a}</option>`).join('');
   sM.innerHTML = '<option value="">Todos</option>' + meses.map(m => `<option>${m}</option>`).join('');
@@ -2382,9 +2399,9 @@ function d2ConstruirFiltros() {
   meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
 
   const lojas = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(l => l && deParaMap[l]))].sort((a,b) => +a - +b);
-  const cats  = [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
+  const cats  = catList.length ? catList : [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
 
-  const familias = [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
+  const familias = familiaList.length ? familiaList : [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
 
   document.getElementById('d2-ano').innerHTML     = '<option value="">Todos</option>' + anos.map(a => `<option>${a}</option>`).join('');
   document.getElementById('d2-mes').innerHTML     = '<option value="">Todos</option>' + meses.map(m => `<option>${m}</option>`).join('');
@@ -2969,9 +2986,9 @@ function d3ConstruirFiltros() {
   const ORD   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
   const lojas = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(l => l && deParaMap[l]))].sort((a,b) => +a - +b);
-  const cats  = [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
+  const cats  = catList.length ? catList : [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
 
-  const familias = [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
+  const familias = familiaList.length ? familiaList : [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
 
   document.getElementById('d3-ano').innerHTML     = '<option value="">Todos</option>' + anos.map(a => `<option>${a}</option>`).join('');
   document.getElementById('d3-mes').innerHTML     = '<option value="">Todos</option>' + meses.map(m => `<option>${m}</option>`).join('');
@@ -3386,8 +3403,8 @@ function seConstruirFiltros() {
 
   // Regra: só mostrar lojas existentes no De-Para
   const lojas = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(l => l && deParaMap[String(l).trim()]))].sort((a,b) => +a - +b);
-  const cats  = [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
-  const familias = [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
+  const cats  = catList.length ? catList : [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
+  const familias = familiaList.length ? familiaList : [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
 
   document.getElementById('se-ano').innerHTML     = '<option value="">Todos</option>' + anos.map(a => `<option>${a}</option>`).join('');
   document.getElementById('se-mes').innerHTML     = '<option value="">Todos</option>' + meses.map(m => `<option>${m}</option>`).join('');
@@ -3793,8 +3810,8 @@ function vConstruirFiltros() {
   const ORD      = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
   const lojas    = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(Boolean))].sort((a,b) => +a - +b);
-  const cats     = [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
-  const familias = [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
+  const cats     = catList.length ? catList : [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
+  const familias = familiaList.length ? familiaList : [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
 
   document.getElementById('v-ano').innerHTML     = '<option value="">Todos</option>' + anos.map(a => `<option>${a}</option>`).join('');
   document.getElementById('v-mes').innerHTML     = '<option value="">Todos</option>' + meses.map(m => `<option>${m}</option>`).join('');
