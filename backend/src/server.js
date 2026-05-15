@@ -1320,18 +1320,30 @@ async function iniciarServidor() {
     // ─────────────────────────────────────
     // RESSINCRONIZAR DE/PARA (quando categorias_depara é alterado fora do import)
     // ─────────────────────────────────────
-    app.post("/api/admin/ressincronizar-depara", verificarToken, async (req, res) => {
-      try {
-        catDeParaInMem = null;
-        cacheClear();
-        _migCat = false; // durante o recalculo, queries usam $lookup (dados corretos)
-        console.log('🔄 Iniciando ressincronização De/Para...');
-        await recalcularCatFamBackground(db); // síncrono aqui — aguarda terminar
-        res.json({ ok: true, mensagem: 'De/Para ressincronizado com sucesso.' });
-      } catch(e) {
-        console.error('❌ Erro ao ressincronizar De/Para:', e.message);
-        res.status(500).json({ erro: 'Erro ao ressincronizar De/Para', detalhe: e.message });
+    // Flag para evitar execuções simultâneas
+    let _ressincEmAndamento = false;
+
+    app.get("/api/admin/ressincronizar-status", verificarToken, (req, res) => {
+      res.json({ emAndamento: _ressincEmAndamento });
+    });
+
+    app.post("/api/admin/ressincronizar-depara", verificarToken, (req, res) => {
+      if (_ressincEmAndamento) {
+        return res.json({ ok: true, emAndamento: true, mensagem: 'Ressincronização já está em andamento. Aguarde alguns minutos e atualize o painel.' });
       }
+      // Responde imediatamente — não bloqueia o Koyeb
+      res.json({ ok: true, emAndamento: false, mensagem: 'Ressincronização iniciada em background. Aguarde 2–3 minutos e clique em "Atualizar painel".' });
+
+      // Roda em background sem bloquear a resposta
+      _ressincEmAndamento = true;
+      catDeParaInMem = null;
+      cacheClear();
+      _migCat = false;
+      console.log('🔄 Ressincronização De/Para iniciada em background...');
+      recalcularCatFamBackground(db)
+        .then(() => { console.log('✅ Ressincronização De/Para concluída.'); })
+        .catch(e => { console.error('❌ Erro na ressincronização De/Para:', e.message); })
+        .finally(() => { _ressincEmAndamento = false; });
     });
 
     // ─────────────────────────────────────

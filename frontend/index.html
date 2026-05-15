@@ -1460,37 +1460,51 @@ async function ressincronizarDePara() {
     status.className   = 'import-status err';
     return;
   }
-  if (!confirm('Isso vai propagar as mudanças do De/Para de Categorias para todos os registros de vendas.\nPode demorar alguns minutos. Continuar?')) return;
+  if (!confirm('Isso vai propagar as mudanças do De/Para de Categorias para todos os registros de vendas.\nPode demorar 2–3 minutos em background. Continuar?')) return;
 
-  status.innerHTML = '<span style="font-family:\'DM Mono\',monospace">Ressincronizando De/Para... aguarde, pode levar alguns minutos.</span>';
-  status.className = 'import-status';
-
-  // Limpa cache do frontend imediatamente
+  // Limpa cache do frontend
   Object.keys(sessionStorage).filter(k => k.startsWith('agre__')).forEach(k => sessionStorage.removeItem(k));
 
   try {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 9 * 60 * 1000); // 9 min max
-
     const res  = await fetch(`${API_BASE}/api/admin/ressincronizar-depara`, {
       method:  'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      signal:  controller.signal
+      headers: { 'Authorization': `Bearer ${token}` }
     });
-    clearTimeout(t);
-
     const data = await res.json();
     if (!res.ok) throw new Error(data.erro || data.detalhe || 'Erro desconhecido');
 
-    status.innerHTML = `✔ ${data.mensagem || 'Ressincronização concluída.'} Recarregando painel...`;
-    status.className = 'import-status ok';
-    setTimeout(() => recarregarDados(), 1500);
-  } catch(e) {
-    if (e.name === 'AbortError') {
-      status.textContent = 'Tempo esgotado. O processo ainda pode estar rodando no servidor — aguarde e atualize o painel em alguns minutos.';
-    } else {
-      status.textContent = `Erro ao ressincronizar: ${e.message}`;
+    if (data.emAndamento) {
+      status.innerHTML = `⏳ ${data.mensagem}`;
+      status.className = 'import-status';
+      return;
     }
+
+    // Processo iniciado em background — monitora status a cada 15 segundos
+    status.innerHTML = `⏳ ${data.mensagem}`;
+    status.className = 'import-status';
+
+    let tentativas = 0;
+    const intervalo = setInterval(async () => {
+      tentativas++;
+      try {
+        const r = await fetch(`${API_BASE}/api/admin/ressincronizar-status`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const s = await r.json();
+        if (!s.emAndamento) {
+          clearInterval(intervalo);
+          status.innerHTML = '✔ Ressincronização concluída! Clique em "Atualizar painel" para ver os dados atualizados.';
+          status.className = 'import-status ok';
+        } else if (tentativas >= 24) { // 6 minutos máximo
+          clearInterval(intervalo);
+          status.innerHTML = '⚠ Processo ainda em andamento no servidor. Aguarde mais alguns minutos e clique em "Atualizar painel".';
+          status.className = 'import-status';
+        }
+      } catch(_) {}
+    }, 15000);
+
+  } catch(e) {
+    status.textContent = `Erro ao ressincronizar: ${e.message}`;
     status.className = 'import-status err';
   }
 }
