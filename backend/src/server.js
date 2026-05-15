@@ -198,6 +198,8 @@ async function recalcularCatFamBackground(db) {
       await db.collection("dados_brutos").bulkWrite(ops, { ordered: false });
       _ressincState.atual += ops.length;
       ops.length = 0;
+      // Cede o event loop para que o servidor responda a outras requisições entre lotes
+      await new Promise(resolve => setImmediate(resolve));
     }
   }
   if (ops.length > 0) {

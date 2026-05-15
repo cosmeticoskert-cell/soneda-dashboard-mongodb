@@ -1488,37 +1488,34 @@ async function ressincronizarDePara() {
       setProgresso(0, 0, 'Iniciando ressincronização...');
     }
 
-    // Monitora progresso a cada 3 segundos
+    // Monitora progresso a cada 5 segundos — intervalo maior reduz carga no servidor
     let tentativas = 0;
+    let falhasConsecutivas = 0;
     const intervalo = setInterval(async () => {
       tentativas++;
       try {
         const r = await fetch(`${API_BASE}/api/admin/ressincronizar-status`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (!r.ok) { falhasConsecutivas++; return; } // 504 temporário — ignora e tenta de novo
+        falhasConsecutivas = 0;
         const s = await r.json();
-        if (!s.emAndamento && s.atual >= s.total && s.total > 0) {
+        if (!s.emAndamento && s.total > 0) {
           clearInterval(intervalo);
           setProgresso(s.total, s.total, '');
           status.innerHTML = `✔ Ressincronização concluída — <strong>${s.total.toLocaleString('pt-BR')}</strong> registros atualizados. Recarregando painel...`;
           status.className = 'import-status ok';
           setTimeout(() => recarregarDados(), 2000);
-        } else if (!s.emAndamento && tentativas > 5) {
-          // Terminou sem progresso visível (total=0 pode acontecer se server reiniciou)
-          clearInterval(intervalo);
-          status.innerHTML = '✔ Ressincronização concluída. Recarregando painel...';
-          status.className = 'import-status ok';
-          setTimeout(() => recarregarDados(), 2000);
         } else if (s.emAndamento) {
           setProgresso(s.atual, s.total,
             `Atualizando registros · ${(s.atual || 0).toLocaleString('pt-BR')} de ${(s.total || 0).toLocaleString('pt-BR')}`);
-        } else if (tentativas >= 120) { // 6 minutos máximo
+        } else if (tentativas >= 72) { // 6 minutos máximo
           clearInterval(intervalo);
-          status.innerHTML = '⚠ Processo ainda em andamento. Aguarde e clique em "Atualizar painel" em alguns minutos.';
+          status.innerHTML = '⚠ Processo ainda em andamento. Clique em "Atualizar painel" em alguns minutos.';
           status.className = 'import-status';
         }
-      } catch(_) {}
-    }, 3000);
+      } catch(_) { falhasConsecutivas++; }
+    }, 5000);
 
   } catch(e) {
     status.textContent = `Erro ao ressincronizar: ${e.message}`;
