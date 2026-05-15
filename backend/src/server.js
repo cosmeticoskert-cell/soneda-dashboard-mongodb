@@ -40,6 +40,9 @@ let catDeParaInMem = null; // { [ean]: { cat, fam } } — recarregado ao importa
 let _migNumericos  = false; // true quando dados têm _qtd_num/_valor_num pré-computados
 let _migCat        = false; // true quando dados têm _cat/_fam pré-computados
 
+// ── ESTADO DA RESSINCRONIZAÇÃO DE/PARA ───────────────────────────────────────
+const _ressincState = { emAndamento: false, atual: 0, total: 0 };
+
 // ─────────────────────────────────────────
 // UPLOAD
 // ─────────────────────────────────────────
@@ -177,6 +180,9 @@ async function recalcularCatFamBackground(db) {
     if (ean) catLookup[ean] = { cat: c.CATEGORIA || null, fam: c.FAMILIA || null };
   });
 
+  _ressincState.total = await db.collection("dados_brutos").estimatedDocumentCount();
+  _ressincState.atual = 0;
+
   const cursor = db.collection("dados_brutos")
     .find({}, { projection: { _id: 1, "GTIN/PLU": 1 } });
   const ops = [];
@@ -190,11 +196,13 @@ async function recalcularCatFamBackground(db) {
     }});
     if (ops.length >= 1000) {
       await db.collection("dados_brutos").bulkWrite(ops, { ordered: false });
+      _ressincState.atual += ops.length;
       ops.length = 0;
     }
   }
   if (ops.length > 0) {
     await db.collection("dados_brutos").bulkWrite(ops, { ordered: false });
+    _ressincState.atual += ops.length;
   }
 
   catDeParaInMem = null;
@@ -1320,22 +1328,25 @@ async function iniciarServidor() {
     // ─────────────────────────────────────
     // RESSINCRONIZAR DE/PARA (quando categorias_depara é alterado fora do import)
     // ─────────────────────────────────────
-    // Flag para evitar execuções simultâneas
-    let _ressincEmAndamento = false;
-
     app.get("/api/admin/ressincronizar-status", verificarToken, (req, res) => {
-      res.json({ emAndamento: _ressincEmAndamento });
+      res.json({
+        emAndamento: _ressincState.emAndamento,
+        atual: _ressincState.atual,
+        total: _ressincState.total
+      });
     });
 
     app.post("/api/admin/ressincronizar-depara", verificarToken, (req, res) => {
-      if (_ressincEmAndamento) {
-        return res.json({ ok: true, emAndamento: true, mensagem: 'Ressincronização já está em andamento. Aguarde alguns minutos e atualize o painel.' });
+      if (_ressincState.emAndamento) {
+        return res.json({ ok: true, emAndamento: true, atual: _ressincState.atual, total: _ressincState.total });
       }
-      // Responde imediatamente — não bloqueia o Koyeb
-      res.json({ ok: true, emAndamento: false, mensagem: 'Ressincronização iniciada em background. Aguarde 2–3 minutos e clique em "Atualizar painel".' });
+      // Responde imediatamente — não bloqueia o gateway
+      res.json({ ok: true, emAndamento: false });
 
       // Roda em background sem bloquear a resposta
-      _ressincEmAndamento = true;
+      _ressincState.emAndamento = true;
+      _ressincState.atual = 0;
+      _ressincState.total = 0;
       catDeParaInMem = null;
       cacheClear();
       _migCat = false;
@@ -1343,7 +1354,7 @@ async function iniciarServidor() {
       recalcularCatFamBackground(db)
         .then(() => { console.log('✅ Ressincronização De/Para concluída.'); })
         .catch(e => { console.error('❌ Erro na ressincronização De/Para:', e.message); })
-        .finally(() => { _ressincEmAndamento = false; });
+        .finally(() => { _ressincState.emAndamento = false; });
     });
 
     // ─────────────────────────────────────
