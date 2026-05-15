@@ -3,6 +3,7 @@ const cors = require("cors");
 const { MongoClient, ObjectId } = require("mongodb");
 const multer = require("multer");
 const csv = require("csv-parser");
+const XLSX = require("xlsx");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -275,16 +276,58 @@ async function iniciarServidor() {
     // TEMPLATES DE IMPORTAÇÃO
     // ─────────────────────────────────────
 
+    // Templates XLSX gerados dinamicamente (De/Para) — CODBARRAS formatado como texto
+    const TEMPLATES_XLSX = {
+      "modelo_categorias_depara.xlsx": {
+        colunas: ["CODBARRAS", "CATEGORIA", "FAMILIA", "NOME PRODUTO"],
+        exemplo:  ["7891234567890", "Cosméticos", "Hidratantes", "Creme Hidratante Corporal 200ml"]
+      },
+      "modelo_lojas_depara.xlsx": {
+        colunas: ["Cod_Loja", "Nome_Fantasia"],
+        exemplo:  ["001", "Loja Centro"]
+      }
+    };
+
     // Download público — sem autenticação
     app.get("/api/templates/:filename", async (req, res) => {
       try {
-        const template = await db.collection("templates_importacao").findOne({ filename: req.params.filename });
+        const { filename } = req.params;
+
+        // Gera XLSX on-the-fly para os De/Para (preserva GTINs como texto)
+        if (TEMPLATES_XLSX[filename]) {
+          const tpl = TEMPLATES_XLSX[filename];
+          const wb  = XLSX.utils.book_new();
+          const ws  = XLSX.utils.aoa_to_sheet([tpl.colunas, tpl.exemplo]);
+
+          // Força coluna CODBARRAS como texto para que Excel não converta em notação científica
+          const codIdx = tpl.colunas.indexOf("CODBARRAS");
+          if (codIdx >= 0) {
+            const colLetra = String.fromCharCode(65 + codIdx);
+            // Linha de cabeçalho (row 1) e linha de exemplo (row 2)
+            [`${colLetra}1`, `${colLetra}2`].forEach(addr => {
+              if (ws[addr]) { ws[addr].t = 's'; ws[addr].z = '@'; }
+            });
+            // Formato de coluna: '@' = texto
+            if (!ws['!cols']) ws['!cols'] = tpl.colunas.map(() => ({}));
+            ws['!cols'][codIdx] = { wch: 20, numFmt: '@' };
+          }
+
+          XLSX.utils.book_append_sheet(wb, ws, "Dados");
+          const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+          res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+          res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+          return res.send(buffer);
+        }
+
+        // CSV para dados_brutos (mantém comportamento atual)
+        const template = await db.collection("templates_importacao").findOne({ filename });
         if (!template) return res.status(404).json({ erro: "Template não encontrado." });
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
         res.setHeader("Content-Disposition", `attachment; filename="${template.filename}"`);
-        res.send("﻿" + template.conteudo); // BOM para compatibilidade com Excel
+        res.send("﻿" + template.conteudo);
       } catch (error) {
-        res.status(500).json({ erro: "Erro ao buscar template." });
+        res.status(500).json({ erro: "Erro ao buscar template.", detalhe: error.message });
       }
     });
 
@@ -840,11 +883,13 @@ async function iniciarServidor() {
         // Join com categorias_depara em tempo de query.
         // Usa _gtin quando disponível (docs novos), cai para GTIN/PLU para docs antigos.
         // Um único caminho garante consistência independente do estado da migração.
+        // $toString em ambos os lados garante comparação correta quando GTIN/PLU está
+        // salvo como número no MongoDB (importado fora do servidor) e CODBARRAS como string.
         const joinCat = [
           { $lookup: {
               from: "categorias_depara",
-              let: { gtin: { $ifNull: ["$_gtin", { $getField: "GTIN/PLU" }] } },
-              pipeline: [{ $match: { $expr: { $eq: ["$$gtin", "$CODBARRAS"] } } }],
+              let: { gtin: { $toString: { $ifNull: ["$_gtin", { $getField: "GTIN/PLU" }] } } },
+              pipeline: [{ $match: { $expr: { $eq: ["$$gtin", { $toString: "$CODBARRAS" }] } } }],
               as: "_c"
           }},
           { $addFields: { _cat: { $arrayElemAt: ["$_c.CATEGORIA", 0] }, _fam: { $arrayElemAt: ["$_c.FAMILIA", 0] } } }
@@ -1045,6 +1090,35 @@ async function iniciarServidor() {
       });
     }
 
+    // Helper: processa XLSX (De/Para categorias e lojas) — preserva GTINs com precisão total
+    async function processarXLSX(req, colecao, opcoes = {}) {
+      const workbook = XLSX.readFile(req.file.path, { type: 'file', raw: true });
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+
+      const sheetName = workbook.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { raw: true, defval: '' });
+
+      const resultados = rows.map(linha => {
+        const registro = {};
+        Object.keys(linha).forEach(coluna => {
+          const k    = coluna.trim();
+          const rawV = linha[coluna];
+          // Normaliza campos de código de barras — números inteiros do Excel têm precisão total
+          if (/^(codbarras|gtin|ean|plu)/i.test(k) || k === 'GTIN/PLU') {
+            registro[k] = normalizarEAN(rawV);
+          } else {
+            registro[k] = rawV === '' ? null : rawV;
+          }
+        });
+        if (opcoes.extraCampos) Object.assign(registro, opcoes.extraCampos);
+        return registro;
+      });
+
+      if (opcoes.deleteFirst) await colecao.deleteMany({});
+      if (resultados.length > 0) await colecao.insertMany(resultados, { ordered: false });
+      return resultados.length;
+    }
+
     app.post("/api/importar/dados-brutos", verificarToken, upload.single("file"), async (req, res) => {
       if (!req.file) return res.status(400).json({ erro: "Nenhum arquivo enviado." });
 
@@ -1082,29 +1156,19 @@ async function iniciarServidor() {
 
     app.post("/api/importar/categorias-depara", verificarToken, upload.single("file"), async (req, res) => {
       if (!req.file) return res.status(400).json({ erro: "Nenhum arquivo enviado." });
-
-      const importId     = req.body.importId    || crypto.randomBytes(8).toString("hex");
-      const chunkIndex   = parseInt(req.body.chunkIndex   ?? "0", 10);
-      const totalChunks  = parseInt(req.body.totalChunks  ?? "1", 10);
-      const totalRecords = parseInt(req.body.totalRecords ?? "0", 10);
-      const nomeArquivo  = req.file.originalname || req.file.filename;
-
+      const importId    = req.body.importId || crypto.randomBytes(8).toString("hex");
+      const nomeArquivo = req.file.originalname || req.file.filename;
       try {
-        const inserido = await processarChunkCSV(req, db.collection("categorias_depara"), true, {
-          deleteFirst: chunkIndex === 0,
+        const inserido = await processarXLSX(req, db.collection("categorias_depara"), {
+          deleteFirst: true,
           extraCampos: { _import_id: importId }
         });
-
-        const isUltimo = chunkIndex === totalChunks - 1;
-        if (isUltimo) {
-          await db.collection("logs_importacao").insertOne({
-            importId, tipo: "categorias_depara", arquivo: nomeArquivo,
-            usuario: req.usuarioLogado, total: totalRecords || inserido, data: new Date()
-          });
-          cacheClear(); // join ocorre em tempo de query — sem recálculo necessário
-        }
-
-        res.json({ ok: true, inserido, ultimo: isUltimo, mensagem: isUltimo ? "Categorias importadas" : "Lote salvo" });
+        await db.collection("logs_importacao").insertOne({
+          importId, tipo: "categorias_depara", arquivo: nomeArquivo,
+          usuario: req.usuarioLogado, total: inserido, data: new Date()
+        });
+        cacheClear();
+        res.json({ ok: true, inserido, ultimo: true, mensagem: "Categorias importadas" });
       } catch (error) {
         res.status(500).json({ erro: "Erro ao salvar no banco de dados", detalhe: error.message });
       }
@@ -1112,29 +1176,19 @@ async function iniciarServidor() {
 
     app.post("/api/importar/lojas-depara", verificarToken, upload.single("file"), async (req, res) => {
       if (!req.file) return res.status(400).json({ erro: "Nenhum arquivo enviado." });
-
-      const importId     = req.body.importId    || crypto.randomBytes(8).toString("hex");
-      const chunkIndex   = parseInt(req.body.chunkIndex   ?? "0", 10);
-      const totalChunks  = parseInt(req.body.totalChunks  ?? "1", 10);
-      const totalRecords = parseInt(req.body.totalRecords ?? "0", 10);
-      const nomeArquivo  = req.file.originalname || req.file.filename;
-
+      const importId    = req.body.importId || crypto.randomBytes(8).toString("hex");
+      const nomeArquivo = req.file.originalname || req.file.filename;
       try {
-        const inserido = await processarChunkCSV(req, db.collection("lojas_depara"), true, {
-          deleteFirst: chunkIndex === 0,
+        const inserido = await processarXLSX(req, db.collection("lojas_depara"), {
+          deleteFirst: true,
           extraCampos: { _import_id: importId }
         });
-
-        const isUltimo = chunkIndex === totalChunks - 1;
-        if (isUltimo) {
-          await db.collection("logs_importacao").insertOne({
-            importId, tipo: "lojas_depara", arquivo: nomeArquivo,
-            usuario: req.usuarioLogado, total: totalRecords || inserido, data: new Date()
-          });
-          cacheClear();
-        }
-
-        res.json({ ok: true, inserido, ultimo: isUltimo, mensagem: isUltimo ? "Lojas importadas" : "Lote salvo" });
+        await db.collection("logs_importacao").insertOne({
+          importId, tipo: "lojas_depara", arquivo: nomeArquivo,
+          usuario: req.usuarioLogado, total: inserido, data: new Date()
+        });
+        cacheClear();
+        res.json({ ok: true, inserido, ultimo: true, mensagem: "Lojas importadas" });
       } catch (error) {
         res.status(500).json({ erro: "Erro ao salvar no banco de dados", detalhe: error.message });
       }

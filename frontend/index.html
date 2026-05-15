@@ -430,21 +430,21 @@
       </div>
       <div class="import-row">
         <div class="import-label">De/Para Categorias</div>
-        <input class="import-file" type="file" id="csvCategorias" accept=".csv,text/csv" />
-        <a class="btn-modelo" href="/api/templates/modelo_categorias_depara.csv" download="modelo_categorias_depara.csv">
+        <input class="import-file" type="file" id="xlsxCategorias" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+        <a class="btn-modelo" href="/api/templates/modelo_categorias_depara.xlsx" download="modelo_categorias_depara.xlsx">
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Modelo
         </a>
-        <button class="btn-import" onclick="enviarCSV('csvCategorias', '/api/importar/categorias-depara')">Importar</button>
+        <button class="btn-import" onclick="enviarXLSX('xlsxCategorias', '/api/importar/categorias-depara')">Importar</button>
       </div>
       <div class="import-row">
         <div class="import-label">De/Para Lojas</div>
-        <input class="import-file" type="file" id="csvLojas" accept=".csv,text/csv" />
-        <a class="btn-modelo" href="/api/templates/modelo_lojas_depara.csv" download="modelo_lojas_depara.csv">
+        <input class="import-file" type="file" id="xlsxLojas" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+        <a class="btn-modelo" href="/api/templates/modelo_lojas_depara.xlsx" download="modelo_lojas_depara.xlsx">
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Modelo
         </a>
-        <button class="btn-import" onclick="enviarCSV('csvLojas', '/api/importar/lojas-depara')">Importar</button>
+        <button class="btn-import" onclick="enviarXLSX('xlsxLojas', '/api/importar/lojas-depara')">Importar</button>
       </div>
       <button class="btn-import secondary" onclick="recarregarDados()">Atualizar painel</button>
       <div id="import-status" class="import-status"></div>
@@ -478,13 +478,13 @@
         </div>
         <p style="font-size:0.8rem;color:var(--text-dim);line-height:1.6;margin:0 0 12px">Tabela que vincula cada produto (EAN/GTIN) à sua Categoria e Família. Cada importação <strong style="color:var(--text)">apaga e reescreve</strong> todo o De/Para — envie sempre o arquivo completo e atualizado.</p>
         <ol style="font-size:0.78rem;color:var(--text-dim);line-height:1.8;margin:0;padding-left:18px">
-          <li>Baixe o <strong style="color:var(--text)">Modelo</strong> ao lado do botão Importar</li>
+          <li>Baixe o <strong style="color:var(--text)">Modelo XLSX</strong> ao lado do botão Importar</li>
           <li>Preencha: <code style="color:var(--accent2)">CODBARRAS · CATEGORIA · FAMILIA · NOME PRODUTO</code></li>
-          <li>Salve como <strong style="color:var(--text)">.CSV</strong> e importe o arquivo completo</li>
+          <li>Salve como <strong style="color:var(--text)">.XLSX</strong> — os códigos de barras são preservados com precisão total</li>
           <li>O painel aplica o mapeamento em tempo real — sem nenhuma etapa adicional</li>
         </ol>
         <div style="margin-top:12px;padding:10px 12px;background:var(--surface2);border-radius:8px;font-family:'DM Mono',monospace;font-size:0.7rem;color:#ff9f43;line-height:1.5">
-          Sempre envie o arquivo completo. Importar parcial apaga os demais produtos do mapeamento.
+          Use sempre o formato XLSX (não CSV). O CSV pode truncar GTINs longos em notação científica.
         </div>
       </div>
 
@@ -496,9 +496,9 @@
         </div>
         <p style="font-size:0.8rem;color:var(--text-dim);line-height:1.6;margin:0 0 12px">Tabela que vincula cada código de filial ao seu nome fantasia. Cada importação <strong style="color:var(--text)">apaga e reescreve</strong> todo o De/Para — envie sempre o arquivo completo.</p>
         <ol style="font-size:0.78rem;color:var(--text-dim);line-height:1.8;margin:0;padding-left:18px">
-          <li>Baixe o <strong style="color:var(--text)">Modelo</strong> ao lado do botão Importar</li>
+          <li>Baixe o <strong style="color:var(--text)">Modelo XLSX</strong> ao lado do botão Importar</li>
           <li>Preencha: <code style="color:var(--accent2)">Cod_Loja · Nome_Fantasia</code></li>
-          <li>Salve como <strong style="color:var(--text)">.CSV</strong> e importe o arquivo completo</li>
+          <li>Salve como <strong style="color:var(--text)">.XLSX</strong> e importe o arquivo completo</li>
         </ol>
         <div style="margin-top:12px;padding:10px 12px;background:var(--surface2);border-radius:8px;font-family:'DM Mono',monospace;font-size:0.7rem;color:#ff9f43;line-height:1.5">
           Sempre envie o arquivo completo. Importar parcial apaga as demais lojas do mapeamento.
@@ -1508,6 +1508,57 @@ async function enviarCSV(inputId, rota) {
 
 function recarregarDados() {
   window.location.reload();
+}
+
+async function enviarXLSX(inputId, rota) {
+  const fileInput = document.getElementById(inputId);
+  const status    = document.getElementById('import-status');
+  const token     = admGetToken();
+
+  if (!fileInput || !fileInput.files.length) {
+    status.textContent = 'Selecione um arquivo XLSX antes de importar.';
+    status.className = 'import-status err';
+    return;
+  }
+  if (!token) {
+    status.textContent = 'Faça login como administrador para importar.';
+    status.className = 'import-status err';
+    return;
+  }
+
+  const arquivo  = fileInput.files[0];
+  const kb       = Math.round(arquivo.size / 1024);
+  status.textContent = `Enviando ${arquivo.name} (${kb.toLocaleString('pt-BR')} KB)...`;
+  status.className   = 'import-status';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', arquivo);
+
+    const response = await fetch(`${API_BASE}${rota}`, {
+      method:  'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body:    formData
+    });
+
+    if (response.status === 401) {
+      sessionStorage.removeItem('adm_token');
+      admAtualizarUI();
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.erro || data.detalhe || 'Erro desconhecido');
+
+    status.innerHTML = `✔ Importação concluída — <strong>${(data.inserido || 0).toLocaleString('pt-BR')}</strong> registros inseridos.`;
+    status.className = 'import-status ok';
+    Object.keys(sessionStorage).filter(k => k.startsWith('agre__')).forEach(k => sessionStorage.removeItem(k));
+    fileInput.value = '';
+  } catch (error) {
+    console.error(error);
+    status.textContent = `Erro ao importar: ${error.message}`;
+    status.className = 'import-status err';
+  }
 }
 
 // ── INICIALIZAÇÃO ─────────────────────────────────────────────────────────────
