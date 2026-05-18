@@ -3321,8 +3321,15 @@ function d3Renderizar() {
     mapLojaTabela[key].qty += est;
   });
   const byLojaTabela = Object.values(mapLojaTabela).sort((a,b) => b.qty - a.qty);
-  const total  = byLoja.reduce((s,r) => s + r.qty, 0);
-  const ativas = byLoja.filter(r => r.qty > 0).length;
+
+  // Total soma TODOS os registros filtrados (incluindo lojas sem de-para), igual ao padrão de seRenderizar
+  const total  = dados.reduce((s,r) => s + parseBR(col(r,'Estoque Diario','Estoque Diário','Estoque','estoque')), 0);
+  const ativas = [...new Set(
+    dados
+      .filter(r => parseBR(col(r,'Estoque Diario','Estoque Diário','Estoque','estoque')) > 0)
+      .map(r => col(r,'Loja','loja'))
+      .filter(Boolean)
+  )].length;
   const top    = byLoja[0];
   const bot    = byLoja.filter(r => r.qty > 0).slice(-1)[0];
 
