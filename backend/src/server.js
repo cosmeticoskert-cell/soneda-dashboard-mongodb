@@ -1004,7 +1004,7 @@ async function iniciarServidor() {
     // ─────────────────────────────────────
     app.get("/api/dashboard/agregados", async (req, res) => {
       try {
-        const cacheKey = 'agre:v2:' + JSON.stringify(req.query);
+        const cacheKey = 'agre:v3:' + JSON.stringify(req.query);
         const cached = cacheGet(cacheKey);
         if (cached) return res.json(cached);
 
@@ -1109,15 +1109,27 @@ async function iniciarServidor() {
               ...mLoja, ...mCat, ...mFamilia,
               { $group: { _id: _migData ? "$_data_iso" : "$Data", ...grp } },
               { $sort: { _id: 1 } }
+            ],
+            por_cat_dia: [
+              ...mLoja, ...mFamilia,
+              { $group: { _id: { cat: "$_cat", data: _migData ? "$_data_iso" : "$Data" }, ...grp } },
+              { $sort: { "_id.data": 1, qty: -1 } }
+            ],
+            por_fam_dia: [
+              ...mLoja, ...mCat,
+              { $group: { _id: { fam: "$_fam", data: _migData ? "$_data_iso" : "$Data" }, ...grp } },
+              { $sort: { "_id.data": 1, qty: -1 } }
             ]
           }}
         ], AGG_OPTS).toArray();
 
         const result = {
-          por_loja: (facet?.por_loja || []).map(r => ({ loja: r._id,                         qty: r.qty, valor: r.valor })),
-          por_cat:  (facet?.por_cat  || []).map(r => ({ cat:  r._id || "Sem mapeamento",     qty: r.qty, valor: r.valor })),
-          por_fam:  (facet?.por_fam  || []).map(r => ({ fam:  r._id || "Sem mapeamento",     qty: r.qty, valor: r.valor })),
-          por_dia:  (facet?.por_dia  || []).map(r => ({ data: r._id,                         qty: r.qty, valor: r.valor }))
+          por_loja:    (facet?.por_loja    || []).map(r => ({ loja: r._id,                                    qty: r.qty, valor: r.valor })),
+          por_cat:     (facet?.por_cat     || []).map(r => ({ cat:  r._id || "Sem mapeamento",                qty: r.qty, valor: r.valor })),
+          por_fam:     (facet?.por_fam     || []).map(r => ({ fam:  r._id || "Sem mapeamento",                qty: r.qty, valor: r.valor })),
+          por_dia:     (facet?.por_dia     || []).map(r => ({ data: r._id,                                    qty: r.qty, valor: r.valor })),
+          por_cat_dia: (facet?.por_cat_dia || []).map(r => ({ cat:  r._id.cat || "Sem mapeamento", data: r._id.data, qty: r.qty, valor: r.valor })),
+          por_fam_dia: (facet?.por_fam_dia || []).map(r => ({ fam:  r._id.fam || "Sem mapeamento", data: r._id.data, qty: r.qty, valor: r.valor }))
         };
         cacheSet(cacheKey, result);
         res.json(result);

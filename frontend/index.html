@@ -1970,7 +1970,7 @@ function prefetchFiltros(ag) {
 
 // ── CACHE DE AGREGADOS (memória + sessionStorage, TTL 60 min) ────────────────
 const AGRE_CACHE_TTL = 60 * 60 * 1000;
-const AGRE_CACHE_PREFIX = 'agre_v2__';
+const AGRE_CACHE_PREFIX = 'agre_v3__';
 function agreCache(key, data) {
   const k = AGRE_CACHE_PREFIX + key;
   if (data !== undefined) {
@@ -2694,7 +2694,7 @@ async function d2Renderizar() {
 
   if (cached) {
     const [pd, all] = agToDia(cached);
-    d2AtualizarGrafico(pd, all);
+    d2AtualizarGrafico(pd, all, cached);
     return;
   }
 
@@ -2716,7 +2716,7 @@ async function d2Renderizar() {
     agreCache(cacheKey, ag);
     setChartLoading(D2_IDS, false);
     const [pd, all] = agToDia(ag);
-    if (all.length > 0) d2AtualizarGrafico(pd, all);
+    if (all.length > 0) d2AtualizarGrafico(pd, all, ag);
   } catch(e) {
     setChartLoading(D2_IDS, false);
     if (e.name === 'AbortError') return;
@@ -2724,7 +2724,7 @@ async function d2Renderizar() {
   }
 }
 
-function d2AtualizarGrafico(porDia, porDiaTabela) {
+function d2AtualizarGrafico(porDia, porDiaTabela, ag) {
   const total = porDia.reduce((s,r) => s + r.qty, 0);
   const dias  = porDia.filter(r => r.qty > 0).length;
   const media = dias > 0 ? (total / dias) : 0;
@@ -2853,22 +2853,29 @@ function d2AtualizarGrafico(porDia, porDiaTabela) {
     <tbody>${linhas2}${totalLinha2}</tbody>
   </table>`;
 
-  renderCat2(d2Filtrar('cat'));
-  renderFam2(d2Filtrar('familia'));
+  renderCat2(ag?.por_cat_dia ? null : d2Filtrar('cat'), ag?.por_cat_dia);
+  renderFam2(ag?.por_fam_dia ? null : d2Filtrar('familia'), ag?.por_fam_dia);
 }
 
-function renderCat2(data) {
+function renderCat2(data, preAg) {
   const loja = document.getElementById('d2-loja').value;
   const ano  = document.getElementById('d2-ano').value;
   const mes  = document.getElementById('d2-mes').value;
   const nomeLoja = loja ? (document.getElementById('d2-loja').selectedOptions[0]?.text || '') : 'Todas as lojas';
   document.getElementById('cat2-sub').textContent = ([ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos') + ' · ' + nomeLoja;
 
-  const cats = [...new Set(data.map(r => getCat(r)).filter(Boolean))].sort();
-  const dias  = [...new Set(data.map(r => {
-    const dt = d2ParseData(col(r,'Data','data'));
-    return dt ? dataParaISO(dt) : null;
-  }).filter(Boolean))].sort();
+  const agRows = preAg
+    ? preAg.filter(r => r.data && (!d2_active.val || d2_active.dim !== 'data' || normalizeFilterValue(r.data) === normalizeFilterValue(d2_active.val)))
+    : null;
+  const cats = agRows
+    ? [...new Set(agRows.map(r => r.cat).filter(Boolean))].sort()
+    : [...new Set(data.map(r => getCat(r)).filter(Boolean))].sort();
+  const dias = agRows
+    ? [...new Set(agRows.map(r => r.data).filter(Boolean))].sort()
+    : [...new Set(data.map(r => {
+        const dt = d2ParseData(col(r,'Data','data'));
+        return dt ? dataParaISO(dt) : null;
+      }).filter(Boolean))].sort();
 
   const state2 = document.getElementById('cat2-state');
   if (cats.length === 0 || dias.length === 0) {
@@ -2880,11 +2887,14 @@ function renderCat2(data) {
   if(state2) state2.style.display = 'none';
 
   const mapCatDia = {};
-  data.forEach(r => {
-    const c  = getCat(r); if (!c) return;
-    const dt = d2ParseData(col(r,'Data','data')); if (!dt) return;
-    const dk = dataParaISO(dt);
-    const qty = parseBR(col(r,'Venda (Qtd)','Venda Nf Quantidade','Venda Pdv Quantidade'));
+  (agRows || data).forEach(r => {
+    const c = agRows ? r.cat : getCat(r); if (!c) return;
+    const dk = agRows ? r.data : (() => {
+      const dt = d2ParseData(col(r,'Data','data'));
+      return dt ? dataParaISO(dt) : null;
+    })();
+    if (!dk) return;
+    const qty = agRows ? Number(r.qty || 0) : parseBR(col(r,'Venda (Qtd)','Venda Nf Quantidade','Venda Pdv Quantidade'));
     if (!mapCatDia[c]) mapCatDia[c] = {};
     mapCatDia[c][dk] = (mapCatDia[c][dk] || 0) + qty;
   });
@@ -3020,18 +3030,25 @@ function cat2OrdenarPor(coluna) {
   d2Renderizar();
 }
 
-function renderFam2(data) {
+function renderFam2(data, preAg) {
   const loja = document.getElementById('d2-loja').value;
   const ano  = document.getElementById('d2-ano').value;
   const mes  = document.getElementById('d2-mes').value;
   const nomeLoja = loja ? (document.getElementById('d2-loja').selectedOptions[0]?.text || '') : 'Todas as lojas';
   document.getElementById('fam2-sub').textContent = ([ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos') + ' · ' + nomeLoja;
 
-  const fams = [...new Set(data.map(r => getFamilia(r) || 'Sem mapeamento').filter(Boolean))].sort();
-  const dias  = [...new Set(data.map(r => {
-    const dt = d2ParseData(col(r,'Data','data'));
-    return dt ? dataParaISO(dt) : null;
-  }).filter(Boolean))].sort();
+  const agRows = preAg
+    ? preAg.filter(r => r.data && (!d2_active.val || d2_active.dim !== 'data' || normalizeFilterValue(r.data) === normalizeFilterValue(d2_active.val)))
+    : null;
+  const fams = agRows
+    ? [...new Set(agRows.map(r => r.fam || 'Sem mapeamento').filter(Boolean))].sort()
+    : [...new Set(data.map(r => getFamilia(r) || 'Sem mapeamento').filter(Boolean))].sort();
+  const dias = agRows
+    ? [...new Set(agRows.map(r => r.data).filter(Boolean))].sort()
+    : [...new Set(data.map(r => {
+        const dt = d2ParseData(col(r,'Data','data'));
+        return dt ? dataParaISO(dt) : null;
+      }).filter(Boolean))].sort();
 
   const state2 = document.getElementById('fam2-state');
   if (fams.length === 0 || dias.length === 0) {
@@ -3042,11 +3059,14 @@ function renderFam2(data) {
   if(state2) state2.style.display = 'none';
 
   const mapFamDia = {};
-  data.forEach(r => {
-    const f  = getFamilia(r) || 'Sem mapeamento';
-    const dt = d2ParseData(col(r,'Data','data')); if (!dt) return;
-    const dk = dataParaISO(dt);
-    const qty = parseBR(col(r,'Venda (Qtd)','Venda Nf Quantidade','Venda Pdv Quantidade'));
+  (agRows || data).forEach(r => {
+    const f = agRows ? (r.fam || 'Sem mapeamento') : (getFamilia(r) || 'Sem mapeamento');
+    const dk = agRows ? r.data : (() => {
+      const dt = d2ParseData(col(r,'Data','data'));
+      return dt ? dataParaISO(dt) : null;
+    })();
+    if (!dk) return;
+    const qty = agRows ? Number(r.qty || 0) : parseBR(col(r,'Venda (Qtd)','Venda Nf Quantidade','Venda Pdv Quantidade'));
     if (!mapFamDia[f]) mapFamDia[f] = {};
     mapFamDia[f][dk] = (mapFamDia[f][dk] || 0) + qty;
   });
