@@ -462,8 +462,8 @@
       </div>
       <div class="import-row">
         <div class="import-label">De/Para Lojas</div>
-        <input class="import-file" type="file" id="xlsxLojas" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-        <a class="btn-modelo" href="/api/templates/modelo_lojas_depara.xlsx" download="modelo_lojas_depara.xlsx">
+        <input class="import-file" type="file" id="xlsxLojas" accept=".csv,text/csv" />
+        <a class="btn-modelo" href="/api/templates/modelo_lojas_depara.csv" download="modelo_lojas_depara.csv">
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Modelo
         </a>
@@ -519,9 +519,9 @@
         </div>
         <p style="font-size:0.8rem;color:var(--text-dim);line-height:1.6;margin:0 0 12px">Tabela que vincula cada código de filial ao seu nome fantasia. Cada importação <strong style="color:var(--text)">apaga e reescreve</strong> todo o De/Para — envie sempre o arquivo completo.</p>
         <ol style="font-size:0.78rem;color:var(--text-dim);line-height:1.8;margin:0;padding-left:18px">
-          <li>Baixe o <strong style="color:var(--text)">Modelo XLSX</strong> ao lado do botão Importar</li>
+          <li>Baixe o <strong style="color:var(--text)">Modelo CSV</strong> ao lado do botão Importar</li>
           <li>Preencha: <code style="color:var(--accent2)">Cod_Loja · Nome_Fantasia</code></li>
-          <li>Salve como <strong style="color:var(--text)">.XLSX</strong> e importe o arquivo completo</li>
+          <li>Salve como <strong style="color:var(--text)">.CSV</strong> e importe o arquivo completo</li>
         </ol>
         <div style="margin-top:12px;padding:10px 12px;background:var(--surface2);border-radius:8px;font-family:'DM Mono',monospace;font-size:0.7rem;color:#ff9f43;line-height:1.5">
           Sempre envie o arquivo completo. Importar parcial apaga as demais lojas do mapeamento.
