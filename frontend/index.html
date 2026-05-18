@@ -4162,6 +4162,12 @@ function vRenderKPIs(byLoja, ag) {
   document.getElementById('v-kpi-lojas').textContent   = ativas.toLocaleString('pt-BR');
   document.getElementById('v-kpi-top').textContent     = top ? top.nome : '—';
   document.getElementById('v-kpi-top-sub').textContent = top ? vFmtR(top.val) : '—';
+  const totalItens = ag && ag.por_dia
+    ? ag.por_dia.reduce((s, r) => s + (r.qty || 0), 0)
+    : byLoja.reduce((s, r) => s + (r.qty || 0), 0);
+  const vStatusEl = document.getElementById('v-status-msg');
+  if (vStatusEl) vStatusEl.textContent =
+    `${totalItens.toLocaleString('pt-BR')} itens vendidos · ${ativas.toLocaleString('pt-BR')} lojas · ${vFmtR(total)}`;
 }
 
 function vRenderGrafico(byLoja, ag) {
