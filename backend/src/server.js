@@ -994,7 +994,7 @@ async function iniciarServidor() {
     // ─────────────────────────────────────
     app.get("/api/dashboard/agregados", async (req, res) => {
       try {
-        const cacheKey = 'agre:' + JSON.stringify(req.query);
+        const cacheKey = 'agre:v2:' + JSON.stringify(req.query);
         const cached = cacheGet(cacheKey);
         if (cached) return res.json(cached);
 
@@ -1076,6 +1076,41 @@ async function iniciarServidor() {
         const mCat     = aCat     ? [{ $match: { _cat: aCat } }]              : [];
         const mFamilia = aFamilia ? [{ $match: { _fam: aFamilia } }]          : [];
 
+        const dateGroupExpr = {
+          $ifNull: [
+            _migData ? "$_data_iso" : null,
+            { $dateToString: {
+              format: "%Y-%m-%d",
+              date: { $ifNull: [
+                { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%d/%m/%Y", onError: null, onNull: null } },
+                { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%Y-%m-%d", onError: null, onNull: null } }
+              ]},
+              onNull: null
+            }},
+            { $concat: [
+              { $ifNull: ["$Ano", "0000"] }, "-",
+              { $switch: {
+                branches: [
+                  { case: { $eq: ["$MÃªs", "Jan"] }, then: "01" },
+                  { case: { $eq: ["$MÃªs", "Fev"] }, then: "02" },
+                  { case: { $eq: ["$MÃªs", "Mar"] }, then: "03" },
+                  { case: { $eq: ["$MÃªs", "Abr"] }, then: "04" },
+                  { case: { $eq: ["$MÃªs", "Mai"] }, then: "05" },
+                  { case: { $eq: ["$MÃªs", "Jun"] }, then: "06" },
+                  { case: { $eq: ["$MÃªs", "Jul"] }, then: "07" },
+                  { case: { $eq: ["$MÃªs", "Ago"] }, then: "08" },
+                  { case: { $eq: ["$MÃªs", "Set"] }, then: "09" },
+                  { case: { $eq: ["$MÃªs", "Out"] }, then: "10" },
+                  { case: { $eq: ["$MÃªs", "Nov"] }, then: "11" },
+                  { case: { $eq: ["$MÃªs", "Dez"] }, then: "12" }
+                ],
+                default: "00"
+              }},
+              "-01"
+            ]}
+          ]
+        };
+
         // Um único $facet — uma varredura, um join
         const [facet] = await db.collection("dados_brutos").aggregate([
           ...preStages,
@@ -1138,6 +1173,16 @@ async function iniciarServidor() {
                   ...grp
               }},
               { $sort: { _id: 1 } }
+            ],
+            por_cat_dia: [
+              ...mLoja, ...mFamilia,
+              { $group: { _id: { cat: "$_cat", data: dateGroupExpr }, ...grp } },
+              { $sort: { "_id.data": 1, qty: -1 } }
+            ],
+            por_fam_dia: [
+              ...mLoja, ...mCat,
+              { $group: { _id: { fam: "$_fam", data: dateGroupExpr }, ...grp } },
+              { $sort: { "_id.data": 1, qty: -1 } }
             ]
           }}
         ], AGG_OPTS).toArray();
@@ -1146,7 +1191,9 @@ async function iniciarServidor() {
           por_loja: (facet?.por_loja || []).map(r => ({ loja: r._id,                         qty: r.qty, valor: r.valor })),
           por_cat:  (facet?.por_cat  || []).map(r => ({ cat:  r._id || "Sem mapeamento",     qty: r.qty, valor: r.valor })),
           por_fam:  (facet?.por_fam  || []).map(r => ({ fam:  r._id || "Sem mapeamento",     qty: r.qty, valor: r.valor })),
-          por_dia:  (facet?.por_dia  || []).map(r => ({ data: r._id,                         qty: r.qty, valor: r.valor }))
+          por_dia:  (facet?.por_dia  || []).map(r => ({ data: r._id,                         qty: r.qty, valor: r.valor })),
+          por_cat_dia: (facet?.por_cat_dia || []).map(r => ({ cat: r._id.cat || "Sem mapeamento", data: r._id.data, qty: r.qty, valor: r.valor })),
+          por_fam_dia: (facet?.por_fam_dia || []).map(r => ({ fam: r._id.fam || "Sem mapeamento", data: r._id.data, qty: r.qty, valor: r.valor }))
         };
         cacheSet(cacheKey, result);
         res.json(result);
