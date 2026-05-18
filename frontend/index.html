@@ -945,6 +945,11 @@
         <div class="chart-title">Categorias com Maior Receita</div>
         <div class="chart-subtitle" id="v-cat1-sub">Todos os períodos</div>
       </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="kpi-label">Total do período</div>
+        <div class="kpi-value" id="v-cat1-total-val" style="font-size:2.2rem">—</div>
+        <div class="kpi-sub">em valor vendido</div>
+      </div>
     </div>
     <div class="chart-wrap" id="v-cat1-wrap" style="height:360px">
       <div class="state-msg" id="v-cat1-state"><div class="spinner"></div>Carregando...</div>
@@ -963,6 +968,11 @@
       <div>
         <div class="chart-title">Famílias com Maior Venda</div>
         <div class="chart-subtitle" id="v-fam1-sub">Todos os períodos</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="kpi-label">Total do período</div>
+        <div class="kpi-value" id="v-fam1-total-val" style="font-size:2.2rem">—</div>
+        <div class="kpi-sub">em valor vendido</div>
       </div>
     </div>
     <div class="chart-wrap" id="v-fam1-wrap" style="height:360px">
@@ -1072,6 +1082,11 @@
         <div class="chart-title">Vendas por Categoria ao Longo do Tempo</div>
         <div class="chart-subtitle" id="cat2-sub">Todos os períodos · Todas as lojas</div>
       </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="kpi-label">Total do período</div>
+        <div class="kpi-value" id="cat2-total-val" style="font-size:2.2rem">—</div>
+        <div class="kpi-sub">unidades vendidas</div>
+      </div>
     </div>
     <div class="chart-wrap" id="cat2-wrap" style="height:380px">
       <div class="state-msg" id="cat2-state"><div class="spinner"></div>Carregando...</div>
@@ -1091,6 +1106,11 @@
       <div>
         <div class="chart-title">Vendas por Família ao Longo do Tempo</div>
         <div class="chart-subtitle" id="fam2-sub">Todos os períodos · Todas as lojas</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="kpi-label">Total do período</div>
+        <div class="kpi-value" id="fam2-total-val" style="font-size:2.2rem">—</div>
+        <div class="kpi-sub">unidades vendidas</div>
       </div>
     </div>
     <div class="chart-wrap" id="fam2-wrap" style="height:380px">
@@ -1178,6 +1198,11 @@
         <div class="chart-title">Estoque Diário por Loja</div>
         <div class="chart-subtitle" id="d3-chart-sub">Todos os períodos · Todas as lojas</div>
       </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="kpi-label">Total do período</div>
+        <div class="kpi-value" id="d3-chart-total-val" style="font-size:2.2rem">—</div>
+        <div class="kpi-sub">unidades em estoque</div>
+      </div>
     </div>
     <div class="chart-wrap" id="d3-chart-wrap" style="height:420px">
       <div class="state-msg" id="d3-chart-state"><div class="spinner"></div>Carregando dados...</div>
@@ -1190,6 +1215,11 @@
       <div>
         <div class="chart-title">Estoque ao Longo do Tempo · 10 Maiores Estoques</div>
         <div class="chart-subtitle" id="d3-line-sub">Todos os períodos · Todas as lojas</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="kpi-label">Total do período</div>
+        <div class="kpi-value" id="d3-line-total-val" style="font-size:2.2rem">—</div>
+        <div class="kpi-sub">unidades em estoque</div>
       </div>
     </div>
     <div class="chart-wrap" id="d3-line-wrap" style="height:380px">
@@ -2879,6 +2909,8 @@ function renderCat2(data, preAg) {
 
   const state2 = document.getElementById('cat2-state');
   if (cats.length === 0 || dias.length === 0) {
+    const totalEl = document.getElementById('cat2-total-val');
+    if (totalEl) totalEl.textContent = '—';
     if(state2) { state2.style.display='flex'; state2.innerHTML='Nenhum dado.'; }
     document.getElementById('cat2-table-body').innerHTML = '<div class="no-data">Nenhum dado</div>';
     const legend = document.getElementById('cat2-legend'); if (legend) legend.innerHTML = '';
@@ -2989,6 +3021,8 @@ function renderCat2(data, preAg) {
 
   let totCat = cats.map(c => ({ cat: c, qty: Object.values(mapCatDia[c] || {}).reduce((s,v)=>s+v,0) }));
   const totalGeral = totCat.reduce((s,r)=>s+r.qty,0);
+  const totalEl = document.getElementById('cat2-total-val');
+  if (totalEl) totalEl.textContent = totalGeral > 0 ? totalGeral.toLocaleString('pt-BR') : '—';
 
   totCat = [...totCat].sort((a,b) => {
     let va, vb;
@@ -3018,9 +3052,14 @@ function renderCat2(data, preAg) {
       </div></td>
     </tr>`;
   }).join('');
+  const totalLinha = `<tr style="background:var(--surface2)">
+    <td class="td-nome" style="font-weight:600;color:var(--accent)">TOTAL GERAL</td>
+    <td class="td-qty" style="color:var(--accent)">${totalGeral.toLocaleString('pt-BR')}</td>
+    <td><span style="font-size:.78rem;color:var(--accent);font-family:'DM Mono',monospace">100%</span></td>
+  </tr>`;
   document.getElementById('cat2-table-body').innerHTML = `<table>
     <thead><tr>${th('Categoria','cat')}${th('Qtd Vendida','qty')}${th('Participação','pct')}</tr></thead>
-    <tbody>${linhas}</tbody>
+    <tbody>${linhas}${totalLinha}</tbody>
   </table>`;
 }
 
@@ -3052,6 +3091,8 @@ function renderFam2(data, preAg) {
 
   const state2 = document.getElementById('fam2-state');
   if (fams.length === 0 || dias.length === 0) {
+    const totalEl = document.getElementById('fam2-total-val');
+    if (totalEl) totalEl.textContent = '—';
     if(state2) { state2.style.display='flex'; state2.innerHTML='Nenhum dado.'; }
     document.getElementById('fam2-table-body').innerHTML = '<div class="no-data">Nenhum dado</div>';
     return;
@@ -3114,6 +3155,8 @@ function renderFam2(data, preAg) {
 
   let totFam = fams.map(f => ({ fam: f, qty: Object.values(mapFamDia[f] || {}).reduce((s,v)=>s+v,0) }));
   const totalGeral = totFam.reduce((s,r)=>s+r.qty,0);
+  const totalEl = document.getElementById('fam2-total-val');
+  if (totalEl) totalEl.textContent = totalGeral > 0 ? totalGeral.toLocaleString('pt-BR') : '—';
 
   totFam = [...totFam].sort((a,b) => {
     let va, vb;
@@ -3154,9 +3197,14 @@ function renderFam2(data, preAg) {
       </div></td>
     </tr>`;
   }).join('');
+  const totalLinha = `<tr style="background:var(--surface2)">
+    <td class="td-nome" style="font-weight:600;color:var(--accent)">TOTAL GERAL</td>
+    <td class="td-qty" style="color:var(--accent)">${totalGeral.toLocaleString('pt-BR')}</td>
+    <td><span style="font-size:.78rem;color:var(--accent);font-family:'DM Mono',monospace">100%</span></td>
+  </tr>`;
   document.getElementById('fam2-table-body').innerHTML = `<table>
     <thead><tr>${th('Família','fam')}${th('Qtd Vendida','qty')}${th('Participação','pct')}</tr></thead>
-    <tbody>${linhas}</tbody>
+    <tbody>${linhas}${totalLinha}</tbody>
   </table>`;
 }
 
@@ -3291,6 +3339,10 @@ async function d3Renderizar() {
   document.getElementById('d3-kpi-top-sub').textContent = top ? `${top.qty.toLocaleString('pt-BR')} un.` : '—';
   document.getElementById('d3-kpi-bot').textContent     = bot ? bot.nome : '—';
   document.getElementById('d3-kpi-bot-sub').textContent = bot ? `${bot.qty.toLocaleString('pt-BR')} un.` : '—';
+  const d3ChartTotalEl = document.getElementById('d3-chart-total-val');
+  const d3LineTotalEl = document.getElementById('d3-line-total-val');
+  if (d3ChartTotalEl) d3ChartTotalEl.textContent = total > 0 ? total.toLocaleString('pt-BR') : '—';
+  if (d3LineTotalEl) d3LineTotalEl.textContent = total > 0 ? total.toLocaleString('pt-BR') : '—';
 
   const barState = document.getElementById('d3-chart-state');
   if (byLoja.length === 0) {
@@ -3467,6 +3519,7 @@ async function d3Renderizar() {
     return 0;
   });
   const d3SelTab = d3_active.dim === 'loja' ? d3_active.val : null;
+  const totalTabelaD3 = byLojaTabela.reduce((s, r) => s + r.qty, 0);
   const linhas3 = sorted3.map(r => {
     const barW = ((r.qty/maxQ)*100).toFixed(1);
     const ativo = d3SelTab === r.loja ? ' row-active' : '';
@@ -3479,9 +3532,15 @@ async function d3Renderizar() {
       </div></td>
     </tr>`;
   }).join('');
+  const totalLinha3 = `<tr style="background:var(--surface2)">
+    <td class="td-loja">—</td>
+    <td class="td-nome" style="font-weight:600;color:var(--accent2)">TOTAL GERAL</td>
+    <td class="td-qty" style="color:var(--accent2)">${totalTabelaD3.toLocaleString('pt-BR')}</td>
+    <td></td>
+  </tr>`;
   document.getElementById('d3-table-body').innerHTML = byLojaTabela.length === 0
     ? '<div class="no-data">Nenhum dado para os filtros selecionados</div>'
-    : `<table><thead><tr>${th3('Filial','loja')}${th3('Nome Fantasia','nome')}${th3('Estoque Atual','qty')}${th3('Volume','volume')}</tr></thead><tbody>${linhas3}</tbody></table>`;
+    : `<table><thead><tr>${th3('Filial','loja')}${th3('Nome Fantasia','nome')}${th3('Estoque Atual','qty')}${th3('Volume','volume')}</tr></thead><tbody>${linhas3}${totalLinha3}</tbody></table>`;
 
   d3RenderRotatividade(dados);
 }
@@ -3872,6 +3931,8 @@ function seRenderTabela(byLoja) {
   }
 
   const sorted = seAplicarSort(byLoja, seSort);
+  const totalSO  = byLoja.reduce((s, r) => s + r.sellout, 0);
+  const totalEst = byLoja.reduce((s, r) => s + r.estoque, 0);
   const th = (label, key) => {
     const cls = seSort.col === key ? ` class="sort-${seSort.dir}"` : '';
     return `<th${cls} onclick="seOrdenarPor('${key}')">${label}</th>`;
@@ -3890,6 +3951,13 @@ function seRenderTabela(byLoja) {
   `;
   }).join('');
 
+  const totalLinha = `<tr style="background:var(--surface2)">
+    <td class="td-loja">—</td>
+    <td class="td-nome" style="font-weight:600;color:var(--accent)">TOTAL GERAL</td>
+    <td class="td-qty" style="color:var(--accent)">${totalSO.toLocaleString('pt-BR')}</td>
+    <td class="td-qty" style="color:var(--accent2)">${totalEst.toLocaleString('pt-BR')}</td>
+  </tr>`;
+
   container.innerHTML = `<table>
     <thead><tr>
       ${th('Filial','loja')}
@@ -3897,7 +3965,7 @@ function seRenderTabela(byLoja) {
       ${th('Sell Out','sellout')}
       ${th('Estoque','estoque')}
     </tr></thead>
-    <tbody>${linhas}</tbody>
+    <tbody>${linhas}${totalLinha}</tbody>
   </table>`;
 }
 
@@ -4246,7 +4314,7 @@ function vt1OrdenarPor(coluna) {
   vRenderizar();
 }
 
-function vRenderCat1(data, preAg) {
+function vRenderCat1(data, preAg, ag) {
   let byCat;
   if (preAg) {
     byCat = preAg.map(r => ({ cat: r.cat || 'SEM CATEGORIA', val: r.valor })).filter(r => r.cat !== 'SEM CATEGORIA' && r.cat !== null);
@@ -4262,6 +4330,11 @@ function vRenderCat1(data, preAg) {
     byCat = Object.values(map);
   }
   const total = byCat.reduce((s,r) => s + r.val, 0);
+  const displayTotal = ag && ag.por_dia
+    ? ag.por_dia.reduce((s, r) => s + r.valor, 0)
+    : total;
+  const totalEl = document.getElementById('v-cat1-total-val');
+  if (totalEl) totalEl.textContent = displayTotal > 0 ? vFmtR(displayTotal) : '—';
 
   const ano = document.getElementById('v-ano').value;
   const mes = document.getElementById('v-mes').value;
@@ -4270,6 +4343,8 @@ function vRenderCat1(data, preAg) {
   const state = document.getElementById('v-cat1-state');
   const semDepara = Object.keys(catMap).length === 0 && !preAg;
   if (byCat.length === 0) {
+    const totalEl = document.getElementById('v-cat1-total-val');
+    if (totalEl) totalEl.textContent = '—';
     if (state) {
       state.style.display = 'flex';
       state.innerHTML = semDepara
@@ -4345,9 +4420,14 @@ function vRenderCat1(data, preAg) {
       </div></td>
     </tr>`;
   }).join('');
+  const totalLinha = `<tr style="background:var(--surface2)">
+    <td class="td-nome" style="font-weight:600;color:var(--accent2)">TOTAL GERAL</td>
+    <td class="td-qty" style="color:var(--accent2)">${vFmtR(total)}</td>
+    <td><span style="font-size:.78rem;color:var(--accent2);font-family:'DM Mono',monospace">100%</span></td>
+  </tr>`;
   document.getElementById('v-cat1-table-body').innerHTML = `<table>
     <thead><tr>${th('Categoria','cat')}${th('Valor Vendido','val')}${th('Participação','pct')}</tr></thead>
-    <tbody>${linhas}</tbody>
+    <tbody>${linhas}${totalLinha}</tbody>
   </table>`;
 }
 
@@ -4358,7 +4438,7 @@ function vCat1OrdenarPor(coluna) {
 }
 
 
-function vRenderFam1(data, preAg) {
+function vRenderFam1(data, preAg, ag) {
   const SEM_MAP_V = 'Sem mapeamento';
   let byFam;
   if (preAg) {
@@ -4376,6 +4456,11 @@ function vRenderFam1(data, preAg) {
   // Separa famílias reais das sem mapeamento (para o gráfico mostra só as reais)
   let byFamChart = byFam.filter(r => r.fam !== SEM_MAP_V);
   const total = byFam.reduce((s,r) => s + r.val, 0);
+  const displayTotal = ag && ag.por_dia
+    ? ag.por_dia.reduce((s, r) => s + r.valor, 0)
+    : total;
+  const totalEl = document.getElementById('v-fam1-total-val');
+  if (totalEl) totalEl.textContent = displayTotal > 0 ? vFmtR(displayTotal) : '—';
 
   const ano = document.getElementById('v-ano').value;
   const mes = document.getElementById('v-mes').value;
@@ -4384,6 +4469,8 @@ function vRenderFam1(data, preAg) {
   const state = document.getElementById('v-fam1-state');
   const semDepara = Object.keys(familiaMap).length === 0 && !preAg;
   if (byFam.length === 0) {
+    const totalEl = document.getElementById('v-fam1-total-val');
+    if (totalEl) totalEl.textContent = '—';
     if (state) {
       state.style.display = 'flex';
       state.innerHTML = semDepara
@@ -4498,10 +4585,15 @@ function vRenderFam1(data, preAg) {
       </div></td>
     </tr>`;
   }).join('');
+  const totalLinha = `<tr style="background:var(--surface2)">
+    <td class="td-nome" style="font-weight:600;color:var(--accent2)">TOTAL GERAL</td>
+    <td class="td-qty" style="color:var(--accent2)">${vFmtR(total)}</td>
+    <td><span style="font-size:.78rem;color:var(--accent2);font-family:'DM Mono',monospace">100%</span></td>
+  </tr>`;
 
   document.getElementById('v-fam1-table-body').innerHTML = `<table>
     <thead><tr>${th('Família','fam')}${th('Valor Vendido','val')}${th('Participação','pct')}</tr></thead>
-    <tbody>${linhas}</tbody>
+    <tbody>${linhas}${totalLinha}</tbody>
   </table>`;
 }
 
@@ -4528,8 +4620,8 @@ async function vRenderizar() {
     vRenderKPIs(byLoja, ag);
     vRenderGrafico(byLoja, ag);
     vRenderTabela(byLoja);
-    if (ag.por_cat.length > 0) vRenderCat1(null, ag.por_cat); else vRenderCat1(vFiltrar('cat'));
-    if (ag.por_fam.length > 0) vRenderFam1(null, ag.por_fam); else vRenderFam1(vFiltrar('familia'));
+    if (ag.por_cat.length > 0) vRenderCat1(null, ag.por_cat, ag); else vRenderCat1(vFiltrar('cat'), null, ag);
+    if (ag.por_fam.length > 0) vRenderFam1(null, ag.por_fam, ag); else vRenderFam1(vFiltrar('familia'), null, ag);
   };
 
   if (cached) {
