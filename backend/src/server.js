@@ -209,8 +209,9 @@ async function iniciarServidor() {
             [{ $set: { _gtin: { $toString: { $ifNull: [{ $getField: "GTIN/PLU" }, ""] } } } }]
           ),
           // Converte Data (DD/MM/YYYY ou YYYY-MM-DD) para string ISO YYYY-MM-DD (ordenável)
+          // Inclui registros onde _data_iso=null mas Data existe (migração antiga que não reconheceu o formato)
           db.collection("dados_brutos").updateMany(
-            { _data_iso: { $exists: false } },
+            { $and: [{ $or: [{ _data_iso: { $exists: false } }, { _data_iso: null }] }, { Data: { $exists: true, $ne: "" } }] },
             [{ $set: {
               _data_iso: {
                 $let: {
@@ -1099,7 +1100,18 @@ async function iniciarServidor() {
               { $group: {
                   _id: {
                     $ifNull: [
-                      _migData ? "$_data_iso" : "$Data",
+                      // 1º: campo _data_iso pré-computado (se migração rodou)
+                      _migData ? "$_data_iso" : null,
+                      // 2º: parsear o campo Data diretamente (DD/MM/YYYY ou YYYY-MM-DD)
+                      { $dateToString: {
+                        format: "%Y-%m-%d",
+                        date: { $ifNull: [
+                          { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%d/%m/%Y", onError: null, onNull: null } },
+                          { $dateFromString: { dateString: { $toString: { $ifNull: [{ $getField: "Data" }, ""] } }, format: "%Y-%m-%d", onError: null, onNull: null } }
+                        ]},
+                        onNull: null
+                      }},
+                      // 3º (último recurso): Mês + Ano → YYYY-MM-01
                       { $concat: [
                         { $ifNull: ["$Ano", "0000"] }, "-",
                         { $switch: {
@@ -1505,8 +1517,9 @@ async function iniciarServidor() {
         totalGtin = gtinResult.modifiedCount;
 
         // 3. Pré-computa _data_iso (YYYY-MM-DD) a partir de Data (DD/MM/YYYY ou YYYY-MM-DD)
+        // Reprocessa também registros onde _data_iso=null mas Data existe
         const dataResult = await db.collection("dados_brutos").updateMany(
-          { _data_iso: { $exists: false } },
+          { $and: [{ $or: [{ _data_iso: { $exists: false } }, { _data_iso: null }] }, { Data: { $exists: true, $ne: "" } }] },
           [{ $set: {
             _data_iso: {
               $let: {
