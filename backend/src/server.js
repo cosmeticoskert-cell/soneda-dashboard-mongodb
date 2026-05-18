@@ -313,9 +313,8 @@ async function iniciarServidor() {
         conteudo: "Ano;Mês;Data;Loja;GTIN/PLU;Produto;Venda (Qtd);Venda (R$);Estoque Diario\n2025;Jan;01/01/2025;001;7891234567890;Produto Exemplo;10;150,00;50\n"
       },
       {
-        filename: "modelo_categorias_depara.csv",
-        nome:     "De/Para Categorias",
-        conteudo: "CODBARRAS;CATEGORIA;FAMILIA;NOME PRODUTO\n7891234567890;Cosméticos;Hidratantes;Creme Hidratante Corporal 200ml\n"
+        filename: "modelo_categorias_depara.xlsx",
+        nome:     "De/Para Categorias"
       },
       {
         filename: "modelo_lojas_depara.csv",
@@ -330,6 +329,11 @@ async function iniciarServidor() {
         console.log(`📄 Template criado: ${t.filename}`);
       }
     }
+    // Migração: renomeia registro antigo csv → xlsx para De/Para Categorias
+    await db.collection("templates_importacao").updateOne(
+      { filename: "modelo_categorias_depara.csv" },
+      { $set: { filename: "modelo_categorias_depara.xlsx", nome: "De/Para Categorias" }, $unset: { conteudo: "" } }
+    );
 
     // Seed super-admin no MongoDB (permite reset de senha por e-mail)
     const adminExistente = await db.collection("usuarios_admin").findOne({ usuario: process.env.ADMIN_USER });
@@ -397,6 +401,16 @@ async function iniciarServidor() {
       try {
         const { filename } = req.params;
 
+        // Se há binário customizado salvo pelo usuário, serve ele com prioridade
+        if (filename.endsWith(".xlsx")) {
+          const stored = await db.collection("templates_importacao").findOne({ filename });
+          if (stored?.conteudoBase64) {
+            res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+            return res.send(Buffer.from(stored.conteudoBase64, "base64"));
+          }
+        }
+
         // Gera XLSX on-the-fly para os De/Para (preserva GTINs como texto)
         if (TEMPLATES_XLSX[filename]) {
           const tpl = TEMPLATES_XLSX[filename];
@@ -455,13 +469,18 @@ async function iniciarServidor() {
       if (!req.file) return res.status(400).json({ erro: "Nenhum arquivo enviado." });
 
       try {
-        const conteudo = fs.readFileSync(req.file.path, "utf-8");
-        fs.unlinkSync(req.file.path);
+        let update;
+        if (filename.endsWith(".xlsx")) {
+          const buffer = fs.readFileSync(req.file.path);
+          fs.unlinkSync(req.file.path);
+          update = { $set: { conteudoBase64: buffer.toString("base64"), atualizadoEm: new Date() }, $unset: { conteudo: "" } };
+        } else {
+          const conteudo = fs.readFileSync(req.file.path, "utf-8");
+          fs.unlinkSync(req.file.path);
+          update = { $set: { conteudo, atualizadoEm: new Date() } };
+        }
 
-        const result = await db.collection("templates_importacao").updateOne(
-          { filename },
-          { $set: { conteudo, atualizadoEm: new Date() } }
-        );
+        const result = await db.collection("templates_importacao").updateOne({ filename }, update);
 
         if (result.matchedCount === 0) {
           return res.status(404).json({ erro: "Template não encontrado. Verifique o nome do arquivo." });

@@ -656,7 +656,7 @@
     <!-- Sub-aba: Modelos de Importação -->
     <div id="gu-sub-modelos" class="gu-subpanel">
       <p style="font-family:'DM Mono',monospace;font-size:0.78rem;color:var(--text-dim);margin-bottom:20px;line-height:1.6">
-        Arquivos CSV usados como modelo na área de importação. Clique em <strong style="color:var(--text)">Subir Novo</strong> para substituir um modelo pelo seu arquivo atualizado.
+        Arquivos usados como modelo na área de importação. Clique em <strong style="color:var(--text)">Subir Novo</strong> para substituir um modelo pelo seu arquivo atualizado.
       </p>
       <div class="gu-table-wrap">
         <table>
@@ -5677,7 +5677,7 @@ async function guCarregarModelos() {
               <a class="btn-gu senha" href="/api/templates/${escHtml(t.filename)}" download="${escHtml(t.filename)}" style="text-decoration:none">↓ Baixar</a>
               <label class="btn-gu novo" style="cursor:pointer;margin:0">
                 ↑ Subir Novo
-                <input type="file" accept=".csv,text/csv" style="display:none"
+                <input type="file" accept="${t.filename.endsWith('.xlsx') ? '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : '.csv,text/csv'}" style="display:none"
                        onchange="guFazUploadModelo('${escHtml(t.filename)}', this)" />
               </label>
             </div>
