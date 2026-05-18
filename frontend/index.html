@@ -1309,6 +1309,7 @@ let f_renderAbort  = null;   // cancela fetch anterior ao aplicar novo filtro
 let v_renderAbort  = null;
 let d2_renderAbort = null;
 let d3_estoqueAg   = null;
+let se_renderAbort = null;
 const _agreMemCache = new Map(); // cache em memória (mais rápido que JSON.parse do sessionStorage)
 let t1Sort         = { col: 'qty', dir: 'desc' };
 let cat1Sort       = { col: 'qty', dir: 'desc' };
@@ -4216,13 +4217,22 @@ function seAplicarSort(data, sortState) {
 }
 
 function seRenderizar() {
+  const ano = document.getElementById('se-ano').value;
+  const mes = document.getElementById('se-mes').value;
+  document.getElementById('se-chart-sub').textContent =
+    [ano, mes].filter(Boolean).join(' · ') || 'Todos os períodos';
+  seRenderizarAgregado();
+  return;
+
   const dados = seFiltrar();
   const dadosTabela = seFiltrar('loja');
   const byLoja = seAgruparPorLoja(dados);
   const byLojaTabela = seAgruparPorLoja(dadosTabela);
 
-  const ano = document.getElementById('se-ano').value;
-  const mes = document.getElementById('se-mes').value;
+  const anoOld = document.getElementById('se-ano').value;
+  const mesOld = document.getElementById('se-mes').value;
+  seRenderizarAgregado();
+  return;
   document.getElementById('se-chart-sub').textContent =
     [ano, mes].filter(Boolean).join(' · ') || 'Todos os períodos';
 
@@ -4249,6 +4259,120 @@ function seRenderizar() {
     seRenderTabela(byLojaTabela);
   }
   seRenderRiskTabela(byLoja);
+}
+
+function seSetLoading() {
+  document.getElementById('se-status-msg').textContent = 'Carregando sell out x estoque...';
+  document.getElementById('se-kpi-sellout').textContent = '...';
+  document.getElementById('se-kpi-estoque').textContent = '...';
+  const seChartSOEl  = document.getElementById('se-chart-sellout-val');
+  const seChartEstEl = document.getElementById('se-chart-estoque-val');
+  if (seChartSOEl) seChartSOEl.textContent = '...';
+  if (seChartEstEl) seChartEstEl.textContent = '...';
+  const state = document.getElementById('se-chart-state');
+  if (state) { state.style.display = 'flex'; state.innerHTML = '<div class="spinner"></div>Carregando dados...'; }
+  if (seChart) { seChart.destroy(); seChart = null; }
+  document.getElementById('se-table-body').innerHTML = '<div class="no-data">Carregando...</div>';
+}
+
+function seParams(aplicarAtivo = true) {
+  const params = buildAgreParams('se', null);
+  if (aplicarAtivo && se_active.dim === 'loja' && se_active.val) params.set('loja', se_active.val);
+  return params;
+}
+
+function seCombinarPorLoja(vendas, estoques) {
+  const map = {};
+  (vendas || []).forEach(r => {
+    const loja = normCodLoja(String(r.loja || ''));
+    if (!loja || !deParaMap[loja]) return;
+    if (!map[loja]) map[loja] = { loja, nome: deParaMap[loja], sellout: 0, estoque: 0, risco: '' };
+    map[loja].sellout += Number(r.qty || 0);
+  });
+  (estoques || []).forEach(r => {
+    const loja = normCodLoja(String(r.loja || ''));
+    if (!loja || !deParaMap[loja]) return;
+    if (!map[loja]) map[loja] = { loja, nome: deParaMap[loja], sellout: 0, estoque: 0, risco: '' };
+    map[loja].estoque += Number(r.qty || 0);
+  });
+  return Object.values(map).map(r => {
+    if (r.sellout > 0 && r.estoque <= 0) r.risco = 'Sem estoque';
+    else if (r.sellout > r.estoque) r.risco = 'Estoque menor que venda';
+    else if (r.sellout > 0) r.risco = 'OK';
+    else r.risco = 'Sem venda';
+    return r;
+  });
+}
+
+function seCombinarPorData(vendas, estoqueLojaDia) {
+  const map = {};
+  (vendas || []).forEach(r => {
+    const data = String(r.data || '').trim();
+    if (!data) return;
+    if (!map[data]) map[data] = { data, iso: data, sellout: 0, estoque: 0 };
+    map[data].sellout += Number(r.qty || 0);
+  });
+  (estoqueLojaDia || []).forEach(r => {
+    const data = String(r.data || '').trim();
+    if (!data) return;
+    if (!map[data]) map[data] = { data, iso: data, sellout: 0, estoque: 0 };
+    map[data].estoque += Number(r.qty || 0);
+  });
+  return Object.values(map).sort((a,b) => String(a.iso).localeCompare(String(b.iso)));
+}
+
+async function seRenderizarAgregado() {
+  seSetLoading();
+  if (se_renderAbort) se_renderAbort.abort();
+  se_renderAbort = new AbortController();
+
+  const paramsMain = seParams(true);
+  const paramsTabela = seParams(false);
+
+  try {
+    const [vMain, eMain, vTabela, eTabela] = await Promise.all([
+      fetchJSON(`${API_BASE}/api/dashboard/agregados?${paramsMain}`, se_renderAbort.signal),
+      fetchJSON(`${API_BASE}/api/dashboard/estoque?${paramsMain}`, se_renderAbort.signal),
+      paramsTabela.toString() === paramsMain.toString()
+        ? Promise.resolve(null)
+        : fetchJSON(`${API_BASE}/api/dashboard/agregados?${paramsTabela}`, se_renderAbort.signal),
+      paramsTabela.toString() === paramsMain.toString()
+        ? Promise.resolve(null)
+        : fetchJSON(`${API_BASE}/api/dashboard/estoque?${paramsTabela}`, se_renderAbort.signal),
+    ]);
+    const vendaTabela = vTabela || vMain;
+    const estoqueTabela = eTabela || eMain;
+
+    const byLoja = seCombinarPorLoja(vMain.por_loja, eMain.por_loja);
+    const byLojaTabela = seCombinarPorLoja(vendaTabela.por_loja, estoqueTabela.por_loja);
+    const totalSellout = (vMain.por_dia || []).reduce((s,r) => s + Number(r.qty || 0), 0);
+    const totalEstoque = Number(eMain.total || 0);
+
+    document.getElementById('se-kpi-sellout').textContent = totalSellout.toLocaleString('pt-BR');
+    document.getElementById('se-kpi-estoque').textContent = totalEstoque.toLocaleString('pt-BR');
+    const seChartSOEl  = document.getElementById('se-chart-sellout-val');
+    const seChartEstEl = document.getElementById('se-chart-estoque-val');
+    if (seChartSOEl)  seChartSOEl.textContent  = totalSellout > 0 ? totalSellout.toLocaleString('pt-BR') : '—';
+    if (seChartEstEl) seChartEstEl.textContent = totalEstoque > 0 ? totalEstoque.toLocaleString('pt-BR') : '—';
+
+    const seStatusEl = document.getElementById('se-status-msg');
+    if (seStatusEl) seStatusEl.textContent =
+      `${totalSellout.toLocaleString('pt-BR')} unidades vendidas · ${totalEstoque.toLocaleString('pt-BR')} em estoque`;
+
+    seRenderGrafico(byLoja);
+    if (seViewMode === 'data') {
+      seRenderTabelaDataAgregada(seCombinarPorData(vMain.por_dia, eMain.por_loja_dia));
+    } else {
+      seRenderTabela(byLojaTabela);
+    }
+    seRenderRiskTabela(byLoja);
+  } catch(e) {
+    if (e.name === 'AbortError') return;
+    console.warn('Sell out x estoque agregado indisponível:', e.message);
+    const state = document.getElementById('se-chart-state');
+    if (state) { state.style.display = 'flex'; state.innerHTML = 'Erro ao carregar dados.'; }
+    document.getElementById('se-table-body').innerHTML = '<div class="no-data">Erro ao carregar dados</div>';
+  }
 }
 
 function seRenderGrafico(byLoja) {
@@ -4431,6 +4555,11 @@ function seAlternarVisao(modo) {
 function seRenderTabelaData(data) {
   const container = document.getElementById('se-table-body');
   const porData = seAgruparPorData(data);
+  seRenderTabelaDataAgregada(porData);
+}
+
+function seRenderTabelaDataAgregada(porData) {
+  const container = document.getElementById('se-table-body');
 
   if (porData.length === 0) {
     container.innerHTML = '<div class="no-data">Nenhum dado para os filtros selecionados</div>';
