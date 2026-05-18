@@ -1940,10 +1940,7 @@ async function renderizar() {
     })
     .filter(r => r.loja);
 
-  fetchKPIs();
-
   if (cached) {
-    // Cache válido → renderiza imediatamente sem buscar no servidor
     const byLoja = toByLoja(cached);
     renderKPIs(byLoja);
     renderGrafico(byLoja);
@@ -1953,7 +1950,19 @@ async function renderizar() {
     return;
   }
 
-  setEstado('Carregando dados...');
+  // Renderiza imediatamente pelo rawData local para feedback instantâneo
+  if (rawData.length > 0) {
+    const byLojaLocal = agruparPorLoja(filtrar('loja'));
+    renderKPIs(byLojaLocal);
+    renderGrafico(byLojaLocal);
+    renderTabela(byLojaLocal);
+    renderCat1(filtrar('cat'));
+    renderFam1(filtrar('familia'));
+  } else {
+    setEstado('Carregando dados...');
+  }
+
+  // Atualiza silenciosamente com dados completos do servidor
   try {
     const ag = await fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('f', f_active)}`);
     agreCache(cacheKey, ag);
@@ -1964,43 +1973,22 @@ async function renderizar() {
     if (ag.por_cat.length > 0) renderCat1(null, ag.por_cat); else renderCat1(filtrar('cat'));
     if (ag.por_fam.length > 0) renderFam1(null, ag.por_fam); else renderFam1(filtrar('familia'));
   } catch(e) {
-    console.warn('Agregados backend indisponíveis:', e.message);
-    const byLojaChart = agruparPorLoja(filtrar('loja'));
-    renderGrafico(byLojaChart); renderTabela(byLojaChart);
-    renderCat1(filtrar('cat')); renderFam1(filtrar('familia'));
+    if (rawData.length === 0) {
+      console.warn('Agregados backend indisponíveis:', e.message);
+      const byLojaChart = agruparPorLoja(filtrar('loja'));
+      renderGrafico(byLojaChart); renderTabela(byLojaChart);
+      renderCat1(filtrar('cat')); renderFam1(filtrar('familia'));
+    }
   }
 }
 
 function renderKPIs(byLoja) {
-  const top = byLoja[0];
-  document.getElementById('kpi-top').textContent     = top ? top.nome : '—';
-  document.getElementById('kpi-top-sub').textContent = top ? `${top.qty.toLocaleString('pt-BR')} un.` : '—';
-}
-
-async function fetchKPIs() {
-  const ano  = document.getElementById('f-ano').value;
-  const mes  = document.getElementById('f-mes').value;
-  const di   = document.getElementById('f-di').value;
-  const df   = document.getElementById('f-df').value;
-  const loja = document.getElementById('f-loja').value;
-  const params = new URLSearchParams();
-  if (ano)  params.set('ano', ano);
-  if (mes)  params.set('mes', mes);
-  if (di)   params.set('di', di);
-  if (df)   params.set('df', df);
-  if (loja) params.set('loja', loja);
-  try {
-    const kpis = await fetchJSON(`${API_BASE}/api/dashboard/kpis?${params}`);
-    document.getElementById('kpi-total').textContent = Number(kpis.total_vendido || 0).toLocaleString('pt-BR');
-    document.getElementById('kpi-lojas').textContent = Number(kpis.total_lojas   || 0).toLocaleString('pt-BR');
-    if (kpis.maior_loja) {
-      const nomeLoja = deParaMap[normCodLoja(String(kpis.maior_loja._id || ''))] || `Filial ${kpis.maior_loja._id}`;
-      document.getElementById('kpi-top').textContent     = nomeLoja;
-      document.getElementById('kpi-top-sub').textContent = `${Number(kpis.maior_loja.qty || 0).toLocaleString('pt-BR')} un.`;
-    }
-  } catch(e) {
-    console.warn('KPIs backend indisponíveis:', e.message);
-  }
+  const total = byLoja.reduce((s, r) => s + r.qty, 0);
+  const top   = byLoja[0];
+  document.getElementById('kpi-total').textContent    = total.toLocaleString('pt-BR');
+  document.getElementById('kpi-lojas').textContent    = byLoja.filter(r => r.qty > 0).length.toLocaleString('pt-BR');
+  document.getElementById('kpi-top').textContent      = top ? top.nome : '—';
+  document.getElementById('kpi-top-sub').textContent  = top ? `${top.qty.toLocaleString('pt-BR')} un.` : '—';
 }
 
 function renderGrafico(byLoja) {
@@ -2581,16 +2569,25 @@ async function d2Renderizar() {
   const cached   = agreCache(cacheKey);
 
   if (cached) {
-    // Cache válido → renderiza imediatamente sem buscar no servidor
     const [pd, all] = agToDia(cached);
     d2AtualizarGrafico(pd, all);
     return;
   }
 
-  const d2State = document.getElementById('d2-chart-state');
-  if (d2State) { d2State.style.display = 'flex'; d2State.innerHTML = 'Carregando dados...'; }
-  if (d2Chart) { d2Chart.destroy(); d2Chart = null; }
+  // Renderiza imediatamente pelo rawData local para feedback instantâneo
+  if (rawData.length > 0) {
+    const localAll = d2AgruparPorDia(d2Filtrar()); // já retorna ordenado
+    const localPd  = d2_active.dim === 'data'
+      ? localAll.filter(r => normalizeFilterValue(r.data) === normalizeFilterValue(d2_active.val))
+      : localAll;
+    if (localAll.length > 0) d2AtualizarGrafico(localPd, localAll);
+  } else {
+    const d2State = document.getElementById('d2-chart-state');
+    if (d2State) { d2State.style.display = 'flex'; d2State.innerHTML = 'Carregando dados...'; }
+    if (d2Chart) { d2Chart.destroy(); d2Chart = null; }
+  }
 
+  // Atualiza silenciosamente com dados completos do servidor
   fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('d2', d2_active)}`).then(ag => {
     agreCache(cacheKey, ag);
     const [pd, all] = agToDia(ag);
@@ -4346,21 +4343,32 @@ async function vRenderizar() {
   };
 
   if (cached) {
-    // Cache válido → renderiza imediatamente sem buscar no servidor
     renderFromAg(cached, toByLoja(cached));
     return;
   }
 
-  vRenderKPIs([], { total_valor: 0, total_lojas: 0 });
+  // Renderiza imediatamente pelo rawData local para feedback instantâneo
+  if (rawData.length > 0) {
+    const byLojaLocalV = vAgruparPorLoja(vFiltrar('loja'));
+    vRenderKPIs(vAgruparPorLoja(vFiltrar()), null);
+    vRenderGrafico(byLojaLocalV);
+    vRenderTabela(byLojaLocalV);
+    vRenderCat1(vFiltrar('cat'));
+    vRenderFam1(vFiltrar('familia'));
+  }
+
+  // Atualiza silenciosamente com dados completos do servidor
   fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('v', v_active)}`).then(ag => {
     agreCache(cacheKey, ag);
     renderFromAg(ag, toByLoja(ag));
   }).catch(e => {
-    console.warn('Agregados backend indisponíveis:', e.message);
-    const byLojaChart = vAgruparPorLoja(vFiltrar('loja'));
-    vRenderKPIs(vAgruparPorLoja(vFiltrar()), null);
-    vRenderGrafico(byLojaChart); vRenderTabela(byLojaChart);
-    vRenderCat1(vFiltrar('cat')); vRenderFam1(vFiltrar('familia'));
+    if (rawData.length === 0) {
+      console.warn('Agregados backend indisponíveis:', e.message);
+      const byLojaChart = vAgruparPorLoja(vFiltrar('loja'));
+      vRenderKPIs(vAgruparPorLoja(vFiltrar()), null);
+      vRenderGrafico(byLojaChart); vRenderTabela(byLojaChart);
+      vRenderCat1(vFiltrar('cat')); vRenderFam1(vFiltrar('familia'));
+    }
   });
 }
 
