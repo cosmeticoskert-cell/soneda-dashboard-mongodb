@@ -1713,7 +1713,7 @@ function col(row, ...nomes) {
 
 function parseBR(raw) {
   if (typeof raw === 'number') return isNaN(raw) ? 0 : raw;
-  let s = (String(raw) || '').trim().replace(/R\$\s*/i, '');
+  let s = (String(raw) || '').trim().replace(/^R\$/i, '').replace(/[\s\u00a0]/g, '');
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
   return parseFloat(s) || 0;
 }

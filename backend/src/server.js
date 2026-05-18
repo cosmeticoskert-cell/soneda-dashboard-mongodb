@@ -121,7 +121,7 @@ function limparValor(valor) {
 
 function parseBRNumber(val) {
   if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
-  let s = String(val ?? '').trim().replace(/^R\$\s*/i, '');
+  let s = String(val ?? '').trim().replace(/^R\$/i, '').replace(/[\s\u00a0]/g, '');
   if (!s) return 0;
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
   const n = parseFloat(s);
@@ -143,12 +143,12 @@ function normalizarEAN(val) {
 function brToDouble(expr) {
   const raw = { $ifNull: [expr, 0] };
   const str = { $toString: raw };
-  const noPrefix = {
-    $replaceAll: {
-      input: { $replaceAll: { input: str, find: "R$ ", replacement: "" } },
-      find: "R$", replacement: ""
-    }
-  };
+  const noPrefix = [
+    ["R$ ", ""],
+    ["R$", ""],
+    [" ", ""],
+    [" ", ""]
+  ].reduce((input, [find, replacement]) => ({ $replaceAll: { input, find, replacement } }), str);
   const normalizedString = {
     $cond: [
       { $gte: [{ $indexOfCP: [noPrefix, ","] }, 0] },
