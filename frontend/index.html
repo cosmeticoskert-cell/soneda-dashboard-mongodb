@@ -679,7 +679,10 @@
     <div id="gu-sub-logs" class="gu-subpanel">
       <div class="gu-header">
         <div style="font-family:'DM Mono',monospace;font-size:0.78rem;color:var(--text-dim)" id="gu-logs-total-label"></div>
-        <button class="btn-gu" onclick="guCarregarLogs()" style="border-color:var(--border)">↻ Atualizar</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn-gu" onclick="guLimparHistorico()" style="border-color:#e87070;color:#e87070">✕ Limpar histórico</button>
+          <button class="btn-gu" onclick="guCarregarLogs()" style="border-color:var(--border)">↻ Atualizar</button>
+        </div>
       </div>
       <p style="font-family:'DM Mono',monospace;font-size:0.75rem;color:var(--text-dim);margin-bottom:18px;line-height:1.6">
         Histórico de arquivos importados. Clique em <strong style="color:#e87070">Desfazer</strong> para reverter uma importação incorreta — os dados importados serão removidos do banco.
@@ -5726,6 +5729,21 @@ const TIPO_LABEL = {
   categorias_depara: 'De/Para Categorias',
   lojas_depara:      'De/Para Lojas'
 };
+
+async function guLimparHistorico() {
+  if (!confirm('Apagar todo o histórico de importações? Os dados do painel não serão removidos.')) return;
+  const token = guGetToken();
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/logs-importacao`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) throw new Error((await res.json()).erro || 'Erro');
+    guCarregarLogs();
+  } catch(e) {
+    alert('Erro ao limpar histórico: ' + e.message);
+  }
+}
 
 async function guCarregarLogs() {
   const token    = guGetToken();

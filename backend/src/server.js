@@ -1571,6 +1571,15 @@ async function iniciarServidor() {
       }
     });
 
+    app.delete("/api/admin/logs-importacao", verificarTokenAdmin, async (req, res) => {
+      try {
+        await db.collection("logs_importacao").deleteMany({});
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao limpar histórico.", detalhe: error.message });
+      }
+    });
+
     app.delete("/api/admin/logs-importacao/:id", verificarTokenAdmin, async (req, res) => {
       try {
         const log = await db.collection("logs_importacao").findOne({ _id: new ObjectId(req.params.id) });
