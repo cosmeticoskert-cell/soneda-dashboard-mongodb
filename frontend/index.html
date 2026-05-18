@@ -1227,6 +1227,7 @@
 const API_BASE = '';
 
 let rawData      = [];
+let rawDataPreviewOk = false; // liberado após o primeiro carregamento completo do servidor
 let deParaMap    = {};
 let catMap       = {};
 let familiaMap   = {};
@@ -1950,8 +1951,8 @@ async function renderizar() {
     return;
   }
 
-  // Renderiza imediatamente pelo rawData local para feedback instantâneo
-  if (rawData.length > 0) {
+  // Preview instantâneo pelo rawData (só após primeiro carregamento completo)
+  if (rawDataPreviewOk && rawData.length > 0) {
     const byLojaLocal = agruparPorLoja(filtrar('loja'));
     renderKPIs(byLojaLocal);
     renderGrafico(byLojaLocal);
@@ -1966,6 +1967,7 @@ async function renderizar() {
   try {
     const ag = await fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('f', f_active)}`);
     agreCache(cacheKey, ag);
+    rawDataPreviewOk = true;
     const byLoja = toByLoja(ag);
     renderKPIs(byLoja);
     renderGrafico(byLoja);
@@ -2574,8 +2576,8 @@ async function d2Renderizar() {
     return;
   }
 
-  // Renderiza imediatamente pelo rawData local para feedback instantâneo
-  if (rawData.length > 0) {
+  // Preview instantâneo pelo rawData (só após primeiro carregamento completo)
+  if (rawDataPreviewOk && rawData.length > 0) {
     const localAll = d2AgruparPorDia(d2Filtrar()); // já retorna ordenado
     const localPd  = d2_active.dim === 'data'
       ? localAll.filter(r => normalizeFilterValue(r.data) === normalizeFilterValue(d2_active.val))
@@ -4347,8 +4349,8 @@ async function vRenderizar() {
     return;
   }
 
-  // Renderiza imediatamente pelo rawData local para feedback instantâneo
-  if (rawData.length > 0) {
+  // Preview instantâneo pelo rawData (só após primeiro carregamento completo)
+  if (rawDataPreviewOk && rawData.length > 0) {
     const byLojaLocalV = vAgruparPorLoja(vFiltrar('loja'));
     vRenderKPIs(vAgruparPorLoja(vFiltrar()), null);
     vRenderGrafico(byLojaLocalV);
@@ -4360,6 +4362,7 @@ async function vRenderizar() {
   // Atualiza silenciosamente com dados completos do servidor
   fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('v', v_active)}`).then(ag => {
     agreCache(cacheKey, ag);
+    rawDataPreviewOk = true;
     renderFromAg(ag, toByLoja(ag));
   }).catch(e => {
     if (rawData.length === 0) {
