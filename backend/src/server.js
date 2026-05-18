@@ -1116,6 +1116,62 @@ async function iniciarServidor() {
     });
 
     // ─────────────────────────────────────
+    // ESTOQUE AGREGADO (consulta o banco completo, sem limite de rawData)
+    // ─────────────────────────────────────
+    app.get("/api/dashboard/estoque", async (req, res) => {
+      try {
+        const cacheKey = 'est:' + JSON.stringify(req.query);
+        const cached = cacheGet(cacheKey);
+        if (cached) return res.json(cached);
+
+        const { ano, mes, loja, cat, familia } = req.query;
+        const di = req.query.di || null;
+        const df = req.query.df || null;
+
+        const baseMatch = {};
+        if (ano)  baseMatch["Ano"]  = String(ano);
+        if (mes)  baseMatch["Mês"]  = String(mes);
+        if (loja) baseMatch["Loja"] = String(loja);
+        if ((di || df) && _migData) {
+          const dr = {};
+          if (di) dr.$gte = di;
+          if (df) dr.$lte = df;
+          baseMatch["_data_iso"] = dr;
+        }
+        if (cat)     baseMatch["_cat"] = cat;
+        if (familia) baseMatch["_fam"] = familia;
+
+        const preStages = Object.keys(baseMatch).length ? [{ $match: baseMatch }] : [];
+        const estoqueExpr = brToDouble({ $getField: "Estoque Diario" });
+
+        const [facet] = await db.collection("dados_brutos").aggregate([
+          ...preStages,
+          { $facet: {
+            total: [
+              { $group: { _id: null, total: { $sum: estoqueExpr }, lojas: { $addToSet: "$Loja" } } },
+              { $project: { _id: 0, total: 1, total_lojas: { $size: "$lojas" } } }
+            ],
+            por_loja: [
+              { $group: { _id: "$Loja", qty: { $sum: estoqueExpr } } },
+              { $sort: { qty: -1 } }
+            ]
+          }}
+        ], { allowDiskUse: true }).toArray();
+
+        const result = {
+          total:       facet?.total?.[0]?.total       || 0,
+          total_lojas: facet?.total?.[0]?.total_lojas || 0,
+          por_loja:    (facet?.por_loja || []).map(r => ({ loja: r._id, qty: r.qty }))
+        };
+
+        cacheSet(cacheKey, result);
+        res.json(result);
+      } catch(e) {
+        res.status(500).json({ erro: "Erro ao agregar estoque", detalhe: e.message });
+      }
+    });
+
+    // ─────────────────────────────────────
     // VENDAS POR FILIAL
     // ─────────────────────────────────────
     app.get("/api/dashboard/vendas-por-filial", async (req, res) => {

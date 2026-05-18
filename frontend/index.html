@@ -2117,6 +2117,14 @@ function renderKPIs(byLoja, ag) {
   document.getElementById('kpi-lojas').textContent    = lojas.toLocaleString('pt-BR');
   document.getElementById('kpi-top').textContent      = top ? top.nome : '—';
   document.getElementById('kpi-top-sub').textContent  = top ? `${top.qty.toLocaleString('pt-BR')} un.` : '—';
+
+  // Atualiza subtítulo com valores filtrados (dinâmico, igual às outras abas)
+  const totalValor = ag && ag.por_dia
+    ? ag.por_dia.reduce((s, r) => s + (r.valor || 0), 0)
+    : 0;
+  const fmtR = v => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  document.getElementById('status-msg').textContent =
+    `${total.toLocaleString('pt-BR')} itens vendidos · ${lojas.toLocaleString('pt-BR')} lojas · ${fmtR(totalValor)}`;
 }
 
 function renderGrafico(byLoja, ag) {
@@ -3532,6 +3540,30 @@ function d3Renderizar() {
     : `<table><thead><tr>${th3('Filial','loja')}${th3('Nome Fantasia','nome')}${th3('Estoque Atual','qty')}${th3('Volume','volume')}</tr></thead><tbody>${linhas3}${d3TotalLinha}</tbody></table>`;
 
   d3RenderRotatividade(dados);
+
+  // Busca total correto do banco completo via API (rawData tem limite de 5000 registros)
+  d3FetchTotalEstoque();
+}
+
+async function d3FetchTotalEstoque() {
+  try {
+    const params = buildAgreParams('d3', d3_active);
+    const ag = await fetchJSON(`${API_BASE}/api/dashboard/estoque?${params}`);
+    const totalCorreto  = ag.total       || 0;
+    const ativasCorreto = ag.total_lojas || 0;
+
+    document.getElementById('d3-kpi-total').textContent = totalCorreto.toLocaleString('pt-BR');
+    document.getElementById('d3-kpi-lojas').textContent = ativasCorreto;
+
+    const d3ChartTotalEl = document.getElementById('d3-chart-total-val');
+    if (d3ChartTotalEl) d3ChartTotalEl.textContent = totalCorreto > 0 ? totalCorreto.toLocaleString('pt-BR') : '—';
+
+    const d3StatusEl = document.getElementById('d3-status-msg');
+    if (d3StatusEl) d3StatusEl.textContent =
+      `${totalCorreto.toLocaleString('pt-BR')} unidades em estoque · ${ativasCorreto} loja${ativasCorreto !== 1 ? 's' : ''}`;
+  } catch(e) {
+    // falha silenciosa: mantém os valores do rawData já exibidos
+  }
 }
 
 function t3OrdenarPor(coluna) {
