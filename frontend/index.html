@@ -141,9 +141,12 @@
   .state-msg { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 340px; gap: 14px; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.82rem; text-align: center; line-height: 1.8; }
   .spinner { width: 32px; height: 32px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  /* Overlay de carregamento sobre gráficos durante filtro */
+  /* Overlay de carregamento sobre gráficos e tabelas durante filtro */
   .chart-loading-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 10; pointer-events: none; }
   .chart-loading-overlay .spinner { width: 22px; height: 22px; border-width: 2px; }
+  /* Tabelas e kpi-rows precisam de position:relative para o overlay funcionar */
+  [id="table-body"], [id$="-table-body"] { position: relative; min-height: 80px; }
+  [id$="-kpi-row"] { position: relative; }
   .no-data { display: flex; align-items: center; justify-content: center; height: 180px; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.8rem; }
   .err { color: #ff6b6b; }
   .active-banner { display:flex; align-items:center; gap:12px; padding:10px 20px; background:var(--surface2); border:1px solid var(--accent); border-radius:8px; margin-bottom:16px; font-family:'DM Mono',monospace; font-size:0.75rem; color:var(--accent); letter-spacing:0.5px; }
@@ -290,7 +293,7 @@
   </div>
   <div id="f-active-banner" class="active-banner" style="display:none"></div>
 
-  <div class="kpi-row">
+  <div class="kpi-row" id="f-kpi-row">
     <div class="kpi-card"><div class="kpi-label">Total Vendido</div><div class="kpi-value" id="kpi-total">—</div><div class="kpi-sub">unidades vendidas</div></div>
     <div class="kpi-card"><div class="kpi-label">Lojas com Venda</div><div class="kpi-value" id="kpi-lojas">—</div><div class="kpi-sub">filiais ativas no período</div></div>
     <div class="kpi-card"><div class="kpi-label">Maior Filial</div><div class="kpi-value" id="kpi-top" style="font-size:1.1rem;padding-top:6px">—</div><div class="kpi-sub" id="kpi-top-sub">—</div></div>
@@ -889,7 +892,7 @@
   <div id="v-active-banner" class="active-banner" style="display:none"></div>
 
   <!-- KPIs -->
-  <div class="kpi-row">
+  <div class="kpi-row" id="v-kpi-row">
     <div class="kpi-card">
       <div class="kpi-label">Total Geral (R$)</div>
       <div class="kpi-value" id="v-kpi-total">—</div>
@@ -1017,7 +1020,7 @@
   <div id="d2-active-banner" class="active-banner" style="display:none"></div>
 
   <!-- KPIs -->
-  <div class="kpi-row">
+  <div class="kpi-row" id="d2-kpi-row">
     <div class="kpi-card">
       <div class="kpi-label">Total do Período (Qtd)</div>
       <div class="kpi-value" id="d2-kpi-total">—</div>
@@ -2019,7 +2022,7 @@ async function renderizar() {
   if (!rawDataPreviewOk) setEstado('Carregando dados...');
 
   // Indicador visual enquanto filtra: opacidade + spinner centralizado
-  if (rawDataPreviewOk) setChartLoading(['chart-wrap','cat1-wrap','fam1-wrap'], true);
+  if (rawDataPreviewOk) setChartLoading(['f-kpi-row','chart-wrap','cat1-wrap','fam1-wrap','table-body','cat1-table-body','fam1-table-body'], true);
 
   // Cancela requisição anterior se um novo filtro for aplicado antes da resposta chegar
   if (f_renderAbort) f_renderAbort.abort();
@@ -2029,7 +2032,7 @@ async function renderizar() {
     const ag = await fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('f', f_active)}`, f_renderAbort.signal);
     agreCache(cacheKey, ag);
     rawDataPreviewOk = true;
-    setChartLoading(['chart-wrap','cat1-wrap','fam1-wrap'], false);
+    setChartLoading(['f-kpi-row','chart-wrap','cat1-wrap','fam1-wrap','table-body','cat1-table-body','fam1-table-body'], false);
     const byLoja = toByLoja(ag);
     renderKPIs(byLoja, ag);
     renderGrafico(byLoja, ag);
@@ -2039,7 +2042,7 @@ async function renderizar() {
     // Pré-aquece cache para os filtros dos itens que já estão na tela (sem bloquear UI)
     prefetchFiltros(ag);
   } catch(e) {
-    setChartLoading(['chart-wrap','cat1-wrap','fam1-wrap'], false);
+    setChartLoading(['f-kpi-row','chart-wrap','cat1-wrap','fam1-wrap','table-body','cat1-table-body','fam1-table-body'], false);
     if (e.name === 'AbortError') return; // filtro mais recente já está carregando, ignorar
     console.warn('Agregados backend indisponíveis:', e.message);
     if (!rawDataPreviewOk) {
@@ -2697,15 +2700,15 @@ async function d2Renderizar() {
     if (d2Chart) { d2Chart.destroy(); d2Chart = null; }
   }
 
-  if (rawDataPreviewOk) setChartLoading(['d2-chart-wrap','cat2-wrap','fam2-wrap'], true);
+  if (rawDataPreviewOk) setChartLoading(['d2-kpi-row','d2-chart-wrap','cat2-wrap','fam2-wrap','d2-table-body','cat2-table-body','fam2-table-body'], true);
 
   fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('d2', d2_active)}`).then(ag => {
     agreCache(cacheKey, ag);
-    setChartLoading(['d2-chart-wrap','cat2-wrap','fam2-wrap'], false);
+    setChartLoading(['d2-kpi-row','d2-chart-wrap','cat2-wrap','fam2-wrap','d2-table-body','cat2-table-body','fam2-table-body'], false);
     const [pd, all] = agToDia(ag);
     if (all.length > 0) d2AtualizarGrafico(pd, all);
   }).catch(e => {
-    setChartLoading(['d2-chart-wrap','cat2-wrap','fam2-wrap'], false);
+    setChartLoading(['d2-kpi-row','d2-chart-wrap','cat2-wrap','fam2-wrap','d2-table-body','cat2-table-body','fam2-table-body'], false);
     console.warn('Agregados backend indisponíveis:', e.message);
   });
 }
@@ -4465,15 +4468,15 @@ async function vRenderizar() {
     return;
   }
 
-  if (rawDataPreviewOk) setChartLoading(['v-chart-wrap','v-cat1-wrap','v-fam1-wrap'], true);
+  if (rawDataPreviewOk) setChartLoading(['v-kpi-row','v-chart-wrap','v-cat1-wrap','v-fam1-wrap','v-table-body','v-cat1-table-body','v-fam1-table-body'], true);
 
   fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('v', v_active)}`).then(ag => {
     agreCache(cacheKey, ag);
     rawDataPreviewOk = true;
-    setChartLoading(['v-chart-wrap','v-cat1-wrap','v-fam1-wrap'], false);
+    setChartLoading(['v-kpi-row','v-chart-wrap','v-cat1-wrap','v-fam1-wrap','v-table-body','v-cat1-table-body','v-fam1-table-body'], false);
     renderFromAg(ag, toByLoja(ag));
   }).catch(e => {
-    setChartLoading(['v-chart-wrap','v-cat1-wrap','v-fam1-wrap'], false);
+    setChartLoading(['v-kpi-row','v-chart-wrap','v-cat1-wrap','v-fam1-wrap','v-table-body','v-cat1-table-body','v-fam1-table-body'], false);
     console.warn('Agregados backend indisponíveis:', e.message);
     if (!rawDataPreviewOk) {
       const byLojaChart = vAgruparPorLoja(vFiltrar('loja'));
