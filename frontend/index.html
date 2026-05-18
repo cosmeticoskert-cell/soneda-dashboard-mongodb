@@ -1909,8 +1909,37 @@ function buildAgreParams(prefix, activeObj) {
   return params;
 }
 
-// ── CACHE DE AGREGADOS (memória + sessionStorage, TTL 15 min) ────────────────
-const AGRE_CACHE_TTL = 15 * 60 * 1000;
+// ── PRÉ-AQUECIMENTO DE CACHE ─────────────────────────────────────────────────
+// Chama silenciosamente os próximos filtros mais prováveis para eles já estarem em cache
+let _prefetchTimer = null;
+function prefetchFiltros(ag) {
+  if (_prefetchTimer) clearTimeout(_prefetchTimer);
+  _prefetchTimer = setTimeout(() => {
+    const base = buildAgreParams('f', { dim: null, val: null });
+    const lojasTopo = (ag.por_loja || []).slice(0, 5).map(r => r.loja).filter(Boolean);
+    const catsTopo  = (ag.por_cat  || []).slice(0, 3).map(r => r.cat).filter(c => c && c !== 'Sem mapeamento');
+    const famsTopo  = (ag.por_fam  || []).slice(0, 3).map(r => r.fam).filter(f => f && f !== 'Sem mapeamento');
+    const filas = [
+      ...lojasTopo.map(l => { const p = new URLSearchParams(base); p.set('ativo_loja', l); return p.toString(); }),
+      ...catsTopo.map(c  => { const p = new URLSearchParams(base); p.set('ativo_cat', c);  return p.toString(); }),
+      ...famsTopo.map(f  => { const p = new URLSearchParams(base); p.set('ativo_familia', f); return p.toString(); }),
+    ].filter(k => !agreCache(k)); // só busca se ainda não está em cache
+
+    let i = 0;
+    function next() {
+      if (i >= filas.length) return;
+      const k = filas[i++];
+      fetchJSON(`${API_BASE}/api/dashboard/agregados?${k}`)
+        .then(ag => agreCache(k, ag))
+        .catch(() => {})
+        .finally(() => setTimeout(next, 300)); // espaça 300ms para não sobrecarregar
+    }
+    next();
+  }, 1500); // começa 1.5s após o render para não competir com a UI
+}
+
+// ── CACHE DE AGREGADOS (memória + sessionStorage, TTL 60 min) ────────────────
+const AGRE_CACHE_TTL = 60 * 60 * 1000;
 function agreCache(key, data) {
   const k = 'agre__' + key;
   if (data !== undefined) {
@@ -1958,13 +1987,20 @@ async function renderizar() {
     renderKPIs(byLoja, cached);
     renderGrafico(byLoja, cached);
     renderTabela(byLoja);
-    if (cached.por_cat.length > 0) renderCat1(null, cached.por_cat); else renderCat1(filtrar('cat'));
-    if (cached.por_fam.length > 0) renderFam1(null, cached.por_fam); else renderFam1(filtrar('familia'));
+    if (cached.por_cat.length > 0) renderCat1(null, cached.por_cat, cached); else renderCat1(filtrar('cat'));
+    if (cached.por_fam.length > 0) renderFam1(null, cached.por_fam, cached); else renderFam1(filtrar('familia'));
     return;
   }
 
   // Mostra loading apenas no primeiro carregamento (filtros interativos mantêm o chart atual visível)
   if (!rawDataPreviewOk) setEstado('Carregando dados...');
+
+  // Indicador visual sutil enquanto filtra (opacidade nos gráficos)
+  if (rawDataPreviewOk) {
+    document.getElementById('chart-wrap')?.style && (document.getElementById('chart-wrap').style.opacity = '0.5');
+    document.getElementById('cat1-wrap')?.style  && (document.getElementById('cat1-wrap').style.opacity  = '0.5');
+    document.getElementById('fam1-wrap')?.style  && (document.getElementById('fam1-wrap').style.opacity  = '0.5');
+  }
 
   // Cancela requisição anterior se um novo filtro for aplicado antes da resposta chegar
   if (f_renderAbort) f_renderAbort.abort();
@@ -1974,13 +2010,18 @@ async function renderizar() {
     const ag = await fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('f', f_active)}`, f_renderAbort.signal);
     agreCache(cacheKey, ag);
     rawDataPreviewOk = true;
+    // Remove indicador de loading
+    ['chart-wrap','cat1-wrap','fam1-wrap'].forEach(id => { const el = document.getElementById(id); if (el) el.style.opacity = ''; });
     const byLoja = toByLoja(ag);
     renderKPIs(byLoja, ag);
     renderGrafico(byLoja, ag);
     renderTabela(byLoja);
-    if (ag.por_cat.length > 0) renderCat1(null, ag.por_cat); else renderCat1(filtrar('cat'));
-    if (ag.por_fam.length > 0) renderFam1(null, ag.por_fam); else renderFam1(filtrar('familia'));
+    if (ag.por_cat.length > 0) renderCat1(null, ag.por_cat, ag); else renderCat1(filtrar('cat'));
+    if (ag.por_fam.length > 0) renderFam1(null, ag.por_fam, ag); else renderFam1(filtrar('familia'));
+    // Pré-aquece cache para os filtros dos itens que já estão na tela (sem bloquear UI)
+    prefetchFiltros(ag);
   } catch(e) {
+    ['chart-wrap','cat1-wrap','fam1-wrap'].forEach(id => { const el = document.getElementById(id); if (el) el.style.opacity = ''; });
     if (e.name === 'AbortError') return; // filtro mais recente já está carregando, ignorar
     console.warn('Agregados backend indisponíveis:', e.message);
     if (!rawDataPreviewOk) {
@@ -2117,14 +2158,18 @@ function agruparPorCategoria(data) {
   return Object.values(map).sort((a,b) => b.qty - a.qty);
 }
 
-function renderCat1(data, preAg) {
+function renderCat1(data, preAg, ag) {
   const SEM_MAP = 'Sem mapeamento';
   let byCat = preAg
     ? preAg.map(r => ({ cat: r.cat || SEM_MAP, qty: r.qty }))
     : agruparPorCategoria(data || []).map(r => ({ ...r, cat: r.cat === 'SEM CATEGORIA' ? SEM_MAP : (r.cat || SEM_MAP) }));
   const total = byCat.reduce((s,r) => s + r.qty, 0);
+  // por_dia aplica todos os filtros (incluindo cat) → total correto no cross-filter
+  const displayTotal = ag && ag.por_dia
+    ? ag.por_dia.reduce((s, r) => s + r.qty, 0)
+    : total;
   const cat1TotalEl = document.getElementById('cat1-total-val');
-  if (cat1TotalEl) cat1TotalEl.textContent = total > 0 ? total.toLocaleString('pt-BR') : '—';
+  if (cat1TotalEl) cat1TotalEl.textContent = displayTotal > 0 ? displayTotal.toLocaleString('pt-BR') : '—';
 
   const ano = document.getElementById('f-ano').value;
   const mes = document.getElementById('f-mes').value;
@@ -2267,14 +2312,18 @@ function agruparPorFamilia(data) {
   return Object.values(map).sort((a,b) => b.qty - a.qty);
 }
 
-function renderFam1(data, preAg) {
+function renderFam1(data, preAg, ag) {
   const SEM_MAP = 'Sem mapeamento';
   let byFam = preAg
     ? preAg.map(r => ({ fam: r.fam || SEM_MAP, qty: r.qty }))
     : agruparPorFamilia(data || []).map(r => ({ ...r, fam: r.fam || SEM_MAP }));
   const total = byFam.reduce((s,r) => s + r.qty, 0);
+  // por_dia aplica todos os filtros → total correto no cross-filter
+  const displayTotal = ag && ag.por_dia
+    ? ag.por_dia.reduce((s, r) => s + r.qty, 0)
+    : total;
   const fam1TotalEl = document.getElementById('fam1-total-val');
-  if (fam1TotalEl) fam1TotalEl.textContent = total > 0 ? total.toLocaleString('pt-BR') : '—';
+  if (fam1TotalEl) fam1TotalEl.textContent = displayTotal > 0 ? displayTotal.toLocaleString('pt-BR') : '—';
 
   const ano = document.getElementById('f-ano').value;
   const mes = document.getElementById('f-mes').value;
