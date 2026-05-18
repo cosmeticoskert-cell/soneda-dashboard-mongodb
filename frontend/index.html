@@ -141,6 +141,9 @@
   .state-msg { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 340px; gap: 14px; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.82rem; text-align: center; line-height: 1.8; }
   .spinner { width: 32px; height: 32px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  /* Overlay de carregamento sobre gráficos durante filtro */
+  .chart-loading-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 10; pointer-events: none; }
+  .chart-loading-overlay .spinner { width: 22px; height: 22px; border-width: 2px; }
   .no-data { display: flex; align-items: center; justify-content: center; height: 180px; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.8rem; }
   .err { color: #ff6b6b; }
   .active-banner { display:flex; align-items:center; gap:12px; padding:10px 20px; background:var(--surface2); border:1px solid var(--accent); border-radius:8px; margin-bottom:16px; font-family:'DM Mono',monospace; font-size:0.75rem; color:var(--accent); letter-spacing:0.5px; }
@@ -1909,6 +1912,26 @@ function buildAgreParams(prefix, activeObj) {
   return params;
 }
 
+// ── OVERLAY DE CARREGAMENTO ────────────────────────────────────────────────────
+function setChartLoading(ids, isLoading) {
+  ids.forEach(id => {
+    const wrap = document.getElementById(id);
+    if (!wrap) return;
+    wrap.style.opacity = isLoading ? '0.5' : '';
+    let overlay = wrap.querySelector('.chart-loading-overlay');
+    if (isLoading) {
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'chart-loading-overlay';
+        overlay.innerHTML = '<div class="spinner"></div>';
+        wrap.appendChild(overlay);
+      }
+    } else {
+      if (overlay) overlay.remove();
+    }
+  });
+}
+
 // ── PRÉ-AQUECIMENTO DE CACHE ─────────────────────────────────────────────────
 // Chama silenciosamente os próximos filtros mais prováveis para eles já estarem em cache
 let _prefetchTimer = null;
@@ -1995,12 +2018,8 @@ async function renderizar() {
   // Mostra loading apenas no primeiro carregamento (filtros interativos mantêm o chart atual visível)
   if (!rawDataPreviewOk) setEstado('Carregando dados...');
 
-  // Indicador visual sutil enquanto filtra (opacidade nos gráficos)
-  if (rawDataPreviewOk) {
-    document.getElementById('chart-wrap')?.style && (document.getElementById('chart-wrap').style.opacity = '0.5');
-    document.getElementById('cat1-wrap')?.style  && (document.getElementById('cat1-wrap').style.opacity  = '0.5');
-    document.getElementById('fam1-wrap')?.style  && (document.getElementById('fam1-wrap').style.opacity  = '0.5');
-  }
+  // Indicador visual enquanto filtra: opacidade + spinner centralizado
+  if (rawDataPreviewOk) setChartLoading(['chart-wrap','cat1-wrap','fam1-wrap'], true);
 
   // Cancela requisição anterior se um novo filtro for aplicado antes da resposta chegar
   if (f_renderAbort) f_renderAbort.abort();
@@ -2010,8 +2029,7 @@ async function renderizar() {
     const ag = await fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('f', f_active)}`, f_renderAbort.signal);
     agreCache(cacheKey, ag);
     rawDataPreviewOk = true;
-    // Remove indicador de loading
-    ['chart-wrap','cat1-wrap','fam1-wrap'].forEach(id => { const el = document.getElementById(id); if (el) el.style.opacity = ''; });
+    setChartLoading(['chart-wrap','cat1-wrap','fam1-wrap'], false);
     const byLoja = toByLoja(ag);
     renderKPIs(byLoja, ag);
     renderGrafico(byLoja, ag);
@@ -2021,7 +2039,7 @@ async function renderizar() {
     // Pré-aquece cache para os filtros dos itens que já estão na tela (sem bloquear UI)
     prefetchFiltros(ag);
   } catch(e) {
-    ['chart-wrap','cat1-wrap','fam1-wrap'].forEach(id => { const el = document.getElementById(id); if (el) el.style.opacity = ''; });
+    setChartLoading(['chart-wrap','cat1-wrap','fam1-wrap'], false);
     if (e.name === 'AbortError') return; // filtro mais recente já está carregando, ignorar
     console.warn('Agregados backend indisponíveis:', e.message);
     if (!rawDataPreviewOk) {
@@ -2679,11 +2697,17 @@ async function d2Renderizar() {
     if (d2Chart) { d2Chart.destroy(); d2Chart = null; }
   }
 
+  if (rawDataPreviewOk) setChartLoading(['d2-chart-wrap','cat2-wrap','fam2-wrap'], true);
+
   fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('d2', d2_active)}`).then(ag => {
     agreCache(cacheKey, ag);
+    setChartLoading(['d2-chart-wrap','cat2-wrap','fam2-wrap'], false);
     const [pd, all] = agToDia(ag);
     if (all.length > 0) d2AtualizarGrafico(pd, all);
-  }).catch(e => console.warn('Agregados backend indisponíveis:', e.message));
+  }).catch(e => {
+    setChartLoading(['d2-chart-wrap','cat2-wrap','fam2-wrap'], false);
+    console.warn('Agregados backend indisponíveis:', e.message);
+  });
 }
 
 function d2AtualizarGrafico(porDia, porDiaTabela) {
@@ -4441,11 +4465,15 @@ async function vRenderizar() {
     return;
   }
 
+  if (rawDataPreviewOk) setChartLoading(['v-chart-wrap','v-cat1-wrap','v-fam1-wrap'], true);
+
   fetchJSON(`${API_BASE}/api/dashboard/agregados?${buildAgreParams('v', v_active)}`).then(ag => {
     agreCache(cacheKey, ag);
     rawDataPreviewOk = true;
+    setChartLoading(['v-chart-wrap','v-cat1-wrap','v-fam1-wrap'], false);
     renderFromAg(ag, toByLoja(ag));
   }).catch(e => {
+    setChartLoading(['v-chart-wrap','v-cat1-wrap','v-fam1-wrap'], false);
     console.warn('Agregados backend indisponíveis:', e.message);
     if (!rawDataPreviewOk) {
       const byLojaChart = vAgruparPorLoja(vFiltrar('loja'));
