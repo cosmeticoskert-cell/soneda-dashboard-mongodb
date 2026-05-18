@@ -329,23 +329,21 @@ async function iniciarServidor() {
         console.log(`📄 Template criado: ${t.filename}`);
       }
     }
-    // Migração: garante que De/Para Categorias existe apenas como xlsx, sem duplicatas
+    // Migração: garante que De/Para Categorias existe como um único registro xlsx
     {
-      const catCsv  = await db.collection("templates_importacao").findOne({ filename: "modelo_categorias_depara.csv" });
-      const catXlsx = await db.collection("templates_importacao").findOne({ filename: "modelo_categorias_depara.xlsx" });
-      if (catCsv && catXlsx) {
-        // Ambos existem (duplicata gerada pela migração anterior): remove o csv
-        await db.collection("templates_importacao").deleteOne({ filename: "modelo_categorias_depara.csv" });
-        console.log("🧹 Duplicata modelo_categorias_depara.csv removida");
-      } else if (catCsv && !catXlsx) {
-        // Apenas o csv existe: renomeia para xlsx
-        await db.collection("templates_importacao").updateOne(
-          { filename: "modelo_categorias_depara.csv" },
-          { $set: { filename: "modelo_categorias_depara.xlsx", nome: "De/Para Categorias" }, $unset: { conteudo: "" } }
-        );
-        console.log("📄 modelo_categorias_depara.csv renomeado para .xlsx");
+      // Remove qualquer entrada csv antiga
+      await db.collection("templates_importacao").deleteMany({ filename: "modelo_categorias_depara.csv" });
+
+      // Remove entradas xlsx duplicadas, mantendo apenas a mais recente
+      const todosXlsx = await db.collection("templates_importacao")
+        .find({ filename: "modelo_categorias_depara.xlsx" })
+        .sort({ atualizadoEm: -1 })
+        .toArray();
+      if (todosXlsx.length > 1) {
+        const idsParaDeletar = todosXlsx.slice(1).map(r => r._id);
+        await db.collection("templates_importacao").deleteMany({ _id: { $in: idsParaDeletar } });
+        console.log(`🧹 ${idsParaDeletar.length} duplicata(s) de modelo_categorias_depara.xlsx removida(s)`);
       }
-      // Se já só existe o xlsx: nada a fazer
     }
 
     // Seed super-admin no MongoDB (permite reset de senha por e-mail)
