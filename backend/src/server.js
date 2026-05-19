@@ -252,7 +252,7 @@ async function iniciarServidor() {
 
     // ── FUNÇÕES DE OTIMIZAÇÃO ────────────────────────────────────────────────
     async function atualizarFlagsMigracao() {
-      const catPendente = { $or: [{ _cat: { $exists: false } }, { _cat: null }, { _cat: "" }] };
+      const catPendente = { _cat: { $exists: false } };
       const [s1, s2, s3, s4] = await Promise.all([
         db.collection("dados_brutos").findOne({ _qtd_num:  { $exists: true } }, { projection: { _id: 1 } }),
         db.collection("dados_brutos").findOne({ _gtin:     { $exists: true } }, { projection: { _id: 1 } }),
@@ -315,22 +315,23 @@ async function iniciarServidor() {
           const catCnt = await db.collection("categorias_depara").estimatedDocumentCount();
           _catCountCache = catCnt;
           if (catCnt > 0) {
-            const catPendente = { $or: [{ _cat: { $exists: false } }, { _cat: null }, { _cat: "" }] };
+            const catPendente = { _cat: { $exists: false } };
             const semCat = await db.collection("dados_brutos").countDocuments(catPendente);
             if (semCat > 0) {
               await db.collection("dados_brutos").aggregate([
                 { $match: catPendente },
+                { $set: { _gtin_lookup: { $toString: { $ifNull: ["$_gtin", { $getField: "GTIN/PLU" }] } } } },
                 { $lookup: {
                     from: "categorias_depara",
-                    let: { gtin: { $toString: { $ifNull: ["$_gtin", { $getField: "GTIN/PLU" }] } } },
-                    pipeline: [{ $match: { $expr: { $eq: ["$$gtin", { $toString: "$CODBARRAS" }] } } }],
+                    localField: "_gtin_lookup",
+                    foreignField: "CODBARRAS",
                     as: "_cjoin"
                 }},
                 { $set: {
                     _cat: { $arrayElemAt: ["$_cjoin.CATEGORIA", 0] },
                     _fam: { $arrayElemAt: ["$_cjoin.FAMILIA", 0] }
                 }},
-                { $unset: "_cjoin" },
+                { $unset: ["_cjoin", "_gtin_lookup"] },
                 { $merge: { into: "dados_brutos", whenMatched: "merge", whenNotMatched: "discard" } }
               ], { allowDiskUse: true }).toArray();
               _migCat = true;
@@ -353,6 +354,20 @@ async function iniciarServidor() {
     await atualizarFlagsMigracao();
     // Migra campos de performance em background sem bloquear o startup
     migrarCamposBackground();
+    function aquecerCacheDashboard(motivo = "startup") {
+      const { request } = require('http');
+      const PORT_WU = process.env.PORT || 3000;
+      const paths = ['/api/dashboard/kpis', '/api/dashboard/agregados', '/api/dashboard/estoque'];
+      paths.forEach(pathReq => {
+        const req = request({ hostname: 'localhost', port: PORT_WU, path: pathReq }, res => {
+          res.resume();
+          console.log(`Cache pre-aquecido (${motivo}): ${pathReq}`);
+        });
+        req.on('error', () => {});
+        req.end();
+      });
+    }
+    setTimeout(() => aquecerCacheDashboard("startup"), 4500);
     // Pré-aquece o cache com a query mais comum (sem filtros) logo após o startup
     setTimeout(() => {
       const { request } = require('http');
@@ -1390,26 +1405,30 @@ async function iniciarServidor() {
           baseMatch["_data_iso"] = dr;
         }
         const preStages = Object.keys(baseMatch).length ? [{ $match: baseMatch }] : [];
-        preStages.push(
-          { $addFields: { _gtin_atual_lookup: { $toString: { $ifNull: ["$_gtin", { $getField: "GTIN/PLU" }] } } } },
-          {
-            $lookup: {
-              from: "categorias_depara",
-              localField: "_gtin_atual_lookup",
-              foreignField: "CODBARRAS",
-              as: "_cat_atual_join"
-            }
-          },
-          {
-            $addFields: {
-              _cat_atual: { $ifNull: [{ $arrayElemAt: ["$_cat_atual_join.CATEGORIA", 0] }, "$_cat"] },
-              _fam_atual: { $ifNull: [{ $arrayElemAt: ["$_cat_atual_join.FAMILIA", 0] }, "$_fam"] }
-            }
-          },
-          { $unset: ["_cat_atual_join", "_gtin_atual_lookup"] }
-        );
-        if (cat)     preStages.push({ $match: { _cat_atual: cat } });
-        if (familia) preStages.push({ $match: { _fam_atual: familia } });
+        if (!_migCat) {
+          preStages.push(
+            { $addFields: { _gtin_atual_lookup: { $toString: { $ifNull: ["$_gtin", { $getField: "GTIN/PLU" }] } } } },
+            {
+              $lookup: {
+                from: "categorias_depara",
+                localField: "_gtin_atual_lookup",
+                foreignField: "CODBARRAS",
+                as: "_cat_atual_join"
+              }
+            },
+            {
+              $addFields: {
+                _cat_atual: { $ifNull: [{ $arrayElemAt: ["$_cat_atual_join.CATEGORIA", 0] }, "$_cat"] },
+                _fam_atual: { $ifNull: [{ $arrayElemAt: ["$_cat_atual_join.FAMILIA", 0] }, "$_fam"] }
+              }
+            },
+            { $unset: ["_cat_atual_join", "_gtin_atual_lookup"] }
+          );
+        }
+        const catCampo = _migCat ? "_cat" : "_cat_atual";
+        const famCampo = _migCat ? "_fam" : "_fam_atual";
+        if (cat)     preStages.push({ $match: { [catCampo]: cat } });
+        if (familia) preStages.push({ $match: { [famCampo]: familia } });
         const estoqueExpr = brToDouble({ $getField: "Estoque Diario" });
         const dateGroupExpr = {
           $ifNull: [
@@ -1469,7 +1488,7 @@ async function iniciarServidor() {
               { $sort: { qty: -1 } }
             ],
             por_cat: [
-              { $group: { _id: "$_cat_atual", qty: { $sum: estoqueExpr } } },
+              { $group: { _id: `$${catCampo}`, qty: { $sum: estoqueExpr } } },
               { $sort: { qty: -1 } }
             ]
           }}
@@ -1568,6 +1587,14 @@ async function iniciarServidor() {
 
     // Helper: processa um arquivo CSV temporário e insere na coleção
     async function processarChunkCSV(req, colecao, limparColunas, opcoes = {}) {
+      let categoriasPorGtin = null;
+      if (colecao.collectionName === 'dados_brutos') {
+        const categorias = await db.collection("categorias_depara")
+          .find({}, { projection: { CODBARRAS: 1, CATEGORIA: 1, FAMILIA: 1 } })
+          .toArray();
+        categoriasPorGtin = new Map(categorias.map(c => [String(c.CODBARRAS || '').trim(), c]));
+      }
+
       return new Promise((resolve, reject) => {
         const resultados = [];
         const stream = fs.createReadStream(req.file.path).pipe(csv({ separator: ";" }));
@@ -1593,6 +1620,9 @@ async function iniciarServidor() {
             registro._qtd_num   = typeof qtd === 'number' ? qtd : (parseFloat(String(qtd)) || 0);
             registro._valor_num = typeof val === 'number' ? val : (parseFloat(String(val)) || 0);
             registro._gtin      = String(registro['GTIN/PLU'] || '').trim() || null;
+            const categoria = categoriasPorGtin?.get(registro._gtin);
+            registro._cat = categoria?.CATEGORIA || null;
+            registro._fam = categoria?.FAMILIA || null;
             // Converte Data (DD/MM/AAAA ou AAAA-MM-DD) para string ISO AAAA-MM-DD
             const dataStr = String(registro['Data'] || '').trim();
             const brMatch  = dataStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -1689,6 +1719,7 @@ async function iniciarServidor() {
           await atualizarFlagsMigracao();
           // Re-migra _cat/_fam para novos registros (em background)
           migrarCamposBackground();
+          setTimeout(() => aquecerCacheDashboard("importacao"), 1500);
         }
 
         res.json({
