@@ -799,6 +799,30 @@ async function iniciarServidor() {
       }
     });
 
+    app.put("/api/admin/usuarios/:id/usuario", verificarTokenAdmin, async (req, res) => {
+      const usuario = (req.body.usuario || "").trim();
+      if (!usuario) return res.status(400).json({ erro: "Nome de usuario e obrigatorio." });
+
+      try {
+        const _id = new ObjectId(req.params.id);
+        const existente = await db.collection("usuarios_importacao").findOne({
+          usuario,
+          _id: { $ne: _id }
+        });
+        if (existente) return res.status(400).json({ erro: "Usuario ja existe." });
+
+        const result = await db.collection("usuarios_importacao").updateOne(
+          { _id },
+          { $set: { usuario } }
+        );
+        if (!result.matchedCount) return res.status(404).json({ erro: "Usuario nao encontrado." });
+
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao atualizar usuario.", detalhe: error.message });
+      }
+    });
+
     app.put("/api/admin/usuarios/:id/email", verificarTokenAdmin, async (req, res) => {
       const { email } = req.body;
       try {
@@ -872,6 +896,30 @@ async function iniciarServidor() {
         res.json({ ok: true });
       } catch (error) {
         res.status(500).json({ erro: "Erro ao alterar senha.", detalhe: error.message });
+      }
+    });
+
+    app.put("/api/admin/admins/:id/usuario", verificarTokenAdmin, async (req, res) => {
+      const usuario = (req.body.usuario || "").trim();
+      if (!usuario) return res.status(400).json({ erro: "Nome de usuario e obrigatorio." });
+
+      try {
+        const _id = new ObjectId(req.params.id);
+        const existente = await db.collection("usuarios_admin").findOne({
+          usuario,
+          _id: { $ne: _id }
+        });
+        if (existente) return res.status(400).json({ erro: "Usuario ja existe." });
+
+        const result = await db.collection("usuarios_admin").updateOne(
+          { _id },
+          { $set: { usuario } }
+        );
+        if (!result.matchedCount) return res.status(404).json({ erro: "Admin nao encontrado." });
+
+        res.json({ ok: true });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao atualizar admin.", detalhe: error.message });
       }
     });
 

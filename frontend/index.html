@@ -765,6 +765,26 @@
   </div>
 </div>
 
+<!-- Modal: Editar Usuario -->
+<div id="modal-editar-usuario" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h3>Editar Usuario</h3>
+    <p style="font-family:'DM Mono',monospace;font-size:0.75rem;color:var(--text-dim);margin-bottom:20px">
+      Usuario atual: <strong id="modal-usuario-nome" style="color:var(--accent2)"></strong>
+    </p>
+    <div class="login-field">
+      <label>Novo nome de usuario</label>
+      <input type="text" id="modal-usuario-valor" placeholder="nome de usuario"
+             onkeydown="if(event.key==='Enter') guConfirmarUsuario()" />
+    </div>
+    <div id="modal-usuario-err" class="modal-err"></div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="guFecharModal('modal-editar-usuario')">Cancelar</button>
+      <button class="btn-modal-ok" onclick="guConfirmarUsuario()">Salvar Usuario</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal: Trocar Senha -->
 <div id="modal-trocar-senha" class="modal-overlay" style="display:none">
   <div class="modal-box">
@@ -847,6 +867,26 @@
     <div class="modal-actions">
       <button class="btn-modal-cancel" onclick="guFecharModal('modal-trocar-senha-admin')">Cancelar</button>
       <button class="btn-modal-ok" onclick="guConfirmarSenhaAdmin()">Salvar Senha</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Usuario Admin -->
+<div id="modal-editar-usuario-admin" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h3>Editar Usuario</h3>
+    <p style="font-family:'DM Mono',monospace;font-size:0.75rem;color:var(--text-dim);margin-bottom:20px">
+      Admin atual: <strong id="modal-usuario-admin-nome" style="color:var(--accent2)"></strong>
+    </p>
+    <div class="login-field">
+      <label>Novo nome de usuario</label>
+      <input type="text" id="modal-usuario-admin-valor" placeholder="nome de usuario"
+             onkeydown="if(event.key==='Enter') guConfirmarUsuarioAdmin()" />
+    </div>
+    <div id="modal-usuario-admin-err" class="modal-err"></div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="guFecharModal('modal-editar-usuario-admin')">Cancelar</button>
+      <button class="btn-modal-ok" onclick="guConfirmarUsuarioAdmin()">Salvar Usuario</button>
     </div>
   </div>
 </div>
@@ -5388,6 +5428,7 @@ async function guCarregarUsuarios() {
           <td class="td-date">${dataCriacao}</td>
           <td>
             <div class="td-actions">
+              <button class="btn-gu senha" onclick="guAbrirModalUsuario('${id}','${escHtml(u.usuario)}')">Nome</button>
               <button class="btn-gu senha" onclick="guAbrirModalEmail('${id}','${escHtml(u.usuario)}','${escHtml(email)}')">E-mail</button>
               <button class="btn-gu senha" onclick="guAbrirModalSenha('${id}','${escHtml(u.usuario)}')">Senha</button>
               <button class="btn-gu excluir" onclick="guExcluir('${id}','${escHtml(u.usuario)}')">Excluir</button>
@@ -5515,6 +5556,43 @@ async function guSolicitarReset() {
 // ── MODAL DE E-MAIL (admin) ───────────────────────────────────────────────────
 
 let guIdEmail = null;
+let guIdUsuario = null;
+
+function guAbrirModalUsuario(id, nome) {
+  guIdUsuario = id;
+  document.getElementById('modal-usuario-nome').textContent  = nome;
+  document.getElementById('modal-usuario-valor').value       = nome;
+  document.getElementById('modal-usuario-err').textContent   = '';
+  document.getElementById('modal-editar-usuario').style.display = 'flex';
+  setTimeout(() => document.getElementById('modal-usuario-valor').focus(), 50);
+}
+
+async function guConfirmarUsuario() {
+  const usuario = document.getElementById('modal-usuario-valor').value.trim();
+  const errEl   = document.getElementById('modal-usuario-err');
+  errEl.textContent = '';
+
+  if (!usuario) {
+    errEl.textContent = 'Informe o nome de usuario.';
+    return;
+  }
+
+  const token = guGetToken();
+  try {
+    const res  = await fetch(`${API_BASE}/api/admin/usuarios/${guIdUsuario}/usuario`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ usuario })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.erro || 'Erro ao salvar usuario.');
+    guFecharModal('modal-editar-usuario');
+    guMostrarMsg('Usuario atualizado com sucesso.', 'ok');
+    guCarregarUsuarios();
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+}
 
 function guAbrirModalEmail(id, nome, emailAtual) {
   guIdEmail = id;
@@ -5890,6 +5968,7 @@ async function guExcluirImportacao(id, arquivo, tipo) {
 
 let guIdSenhaAdmin = null;
 let guIdEmailAdmin = null;
+let guIdUsuarioAdmin = null;
 
 async function guCarregarAdmins() {
   const token   = guGetToken();
@@ -5931,6 +6010,7 @@ async function guCarregarAdmins() {
           <td class="td-date">${dataCriacao}</td>
           <td>
             <div class="td-actions">
+              <button class="btn-gu senha" onclick="guAbrirModalUsuarioAdmin('${id}','${escHtml(a.usuario)}')">Nome</button>
               <button class="btn-gu senha" onclick="guAbrirModalEmailAdmin('${id}','${escHtml(a.usuario)}','${escHtml(email)}')">E-mail</button>
               <button class="btn-gu senha" onclick="guAbrirModalSenhaAdmin('${id}','${escHtml(a.usuario)}')">Senha</button>
               <button class="btn-gu excluir" onclick="guExcluirAdmin('${id}','${escHtml(a.usuario)}')">Excluir</button>
@@ -5985,6 +6065,15 @@ function guAbrirModalEmailAdmin(id, nome, emailAtual) {
   setTimeout(() => document.getElementById('modal-email-admin-valor').focus(), 50);
 }
 
+function guAbrirModalUsuarioAdmin(id, nome) {
+  guIdUsuarioAdmin = id;
+  document.getElementById('modal-usuario-admin-nome').textContent  = nome;
+  document.getElementById('modal-usuario-admin-valor').value       = nome;
+  document.getElementById('modal-usuario-admin-err').textContent   = '';
+  document.getElementById('modal-editar-usuario-admin').style.display = 'flex';
+  setTimeout(() => document.getElementById('modal-usuario-admin-valor').focus(), 50);
+}
+
 async function guConfirmarNovoAdmin() {
   const usuario = document.getElementById('modal-admin-user').value.trim();
   const senha   = document.getElementById('modal-admin-senha').value;
@@ -6029,6 +6118,30 @@ async function guConfirmarSenhaAdmin() {
     if (!res.ok) throw new Error(data.erro || 'Erro ao trocar senha.');
     guFecharModal('modal-trocar-senha-admin');
     guMostrarMsgAdmin('Senha alterada com sucesso.', 'ok');
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+}
+
+async function guConfirmarUsuarioAdmin() {
+  const usuario = document.getElementById('modal-usuario-admin-valor').value.trim();
+  const errEl   = document.getElementById('modal-usuario-admin-err');
+  errEl.textContent = '';
+
+  if (!usuario) { errEl.textContent = 'Informe o nome de usuario.'; return; }
+
+  const token = guGetToken();
+  try {
+    const res  = await fetch(`${API_BASE}/api/admin/admins/${guIdUsuarioAdmin}/usuario`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ usuario })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.erro || 'Erro ao salvar usuario.');
+    guFecharModal('modal-editar-usuario-admin');
+    guMostrarMsgAdmin('Usuario atualizado com sucesso.', 'ok');
+    guCarregarAdmins();
   } catch (err) {
     errEl.textContent = err.message;
   }
