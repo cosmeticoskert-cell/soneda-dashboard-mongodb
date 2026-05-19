@@ -938,8 +938,8 @@ async function iniciarServidor() {
           {
             $group: {
               _id: null,
-              total_vendido: { $sum: brToDouble({ $getField: "Venda (Qtd)" }) },
-              total_valor:   { $sum: brValorExpr() },
+              total_vendido: { $sum: _migNumericos ? "$_qtd_num"   : brToDouble({ $getField: "Venda (Qtd)" }) },
+              total_valor:   { $sum: _migNumericos ? "$_valor_num" : brValorExpr() },
               lojas:         { $addToSet: "$Loja" }
             }
           },
@@ -1435,16 +1435,12 @@ async function iniciarServidor() {
 
           // Pré-computa campos numéricos, _gtin e _data_iso para queries indexadas
           if (colecao.collectionName === 'dados_brutos') {
-            const toNum = v => (typeof v === 'number' ? v : (parseFloat(String(v ?? '')) || 0));
-            // Usa mesma lógica do brValorExpr(): tenta o campo principal; se for 0 ou vazio, tenta o seguinte
-            const qRv  = toNum(registro['Venda (Qtd)']);
-            const qNf  = toNum(registro['Venda Nf Quantidade']);
-            const qPdv = toNum(registro['Venda Pdv Quantidade']);
-            registro._qtd_num   = qRv > 0 ? qRv : (qNf > 0 ? qNf : qPdv);
-            const vRv  = toNum(registro['Venda (R$)']);
-            const vPdv = toNum(registro['Venda Pdv Valor']);
-            const vNf  = toNum(registro['Venda Nf Valor']);
-            registro._valor_num = vRv > 0 ? vRv : (vPdv > 0 ? vPdv : vNf);
+            const qtdRaw = registro['Venda (Qtd)'] ?? registro['Venda Nf Quantidade'] ?? registro['Venda Pdv Quantidade'] ?? 0;
+            const valRaw = registro['Venda (R$)']  ?? registro['Venda Pdv Valor']      ?? registro['Venda Nf Valor']      ?? 0;
+            const qtd = parseBRNumber(qtdRaw);
+            const val = parseBRNumber(valRaw);
+            registro._qtd_num   = typeof qtd === 'number' ? qtd : (parseFloat(String(qtd)) || 0);
+            registro._valor_num = typeof val === 'number' ? val : (parseFloat(String(val)) || 0);
             registro._gtin      = String(registro['GTIN/PLU'] || '').trim() || null;
             // Converte Data (DD/MM/AAAA ou AAAA-MM-DD) para string ISO AAAA-MM-DD
             const dataStr = String(registro['Data'] || '').trim();
