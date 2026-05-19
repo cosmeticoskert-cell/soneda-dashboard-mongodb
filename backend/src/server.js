@@ -21,6 +21,7 @@ app.use(express.static(frontendPath));
 const PORT = process.env.PORT || 3000;
 const uri = process.env.MONGODB_URI;
 const dbName = process.env.DB_NAME || "soneda_dashboard";
+const USUARIO_PAI_PADRAO = "larissa antunez";
 
 const client = new MongoClient(uri);
 
@@ -84,6 +85,45 @@ function verificarSenha(senha, hashArmazenado) {
   const [salt, hash] = hashArmazenado.split(":");
   const hashTeste = crypto.scryptSync(senha, salt, 64).toString("hex");
   return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(hashTeste, "hex"));
+}
+
+function normalizarUsuario(usuario) {
+  return String(usuario || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, " ");
+}
+
+async function obterUsuarioPai(db) {
+  return db.collection("usuarios_admin").findOne({ usuarioPai: true });
+}
+
+async function garantirUsuarioPai(db) {
+  const admins = await db.collection("usuarios_admin").find({}).sort({ criadoEm: 1 }).toArray();
+  if (!admins.length) return null;
+
+  const pais = admins.filter(a => a.usuarioPai === true);
+  if (pais.length) {
+    if (pais.length > 1) {
+      await db.collection("usuarios_admin").updateMany(
+        { _id: { $in: pais.slice(1).map(a => a._id) } },
+        { $unset: { usuarioPai: "" } }
+      );
+    }
+    return pais[0];
+  }
+
+  const adminPai = admins.find(a => normalizarUsuario(a.usuario) === USUARIO_PAI_PADRAO)
+    || admins.find(a => normalizarUsuario(a.usuario) === normalizarUsuario(process.env.ADMIN_USER))
+    || admins[0];
+
+  await db.collection("usuarios_admin").updateOne(
+    { _id: adminPai._id },
+    { $set: { usuarioPai: true } }
+  );
+  return { ...adminPai, usuarioPai: true };
 }
 
 function verificarToken(req, res, next) {
@@ -385,6 +425,7 @@ async function iniciarServidor() {
         usuario:  process.env.ADMIN_USER,
         senha:    hashSenha(process.env.ADMIN_PASSWORD),
         email:    process.env.ADMIN_EMAIL || "",
+        usuarioPai: normalizarUsuario(process.env.ADMIN_USER) === USUARIO_PAI_PADRAO,
         criadoEm: new Date()
       });
       console.log(`🔐 Super-admin criado no MongoDB: ${process.env.ADMIN_USER}`);
@@ -397,6 +438,7 @@ async function iniciarServidor() {
     }
 
     // Garante índice único no campo usuario
+    await garantirUsuarioPai(db);
     await db.collection("usuarios_importacao").createIndex({ usuario: 1 }, { unique: true });
 
     // Índices de performance para dados_brutos (queries de dashboard)
@@ -874,6 +916,10 @@ async function iniciarServidor() {
 
     app.delete("/api/admin/admins/:id", verificarTokenAdmin, async (req, res) => {
       try {
+        const admin = await db.collection("usuarios_admin").findOne({ _id: new ObjectId(req.params.id) });
+        if (admin?.usuarioPai) {
+          return res.status(400).json({ erro: "O usuario pai nao pode ser excluido." });
+        }
         const total = await db.collection("usuarios_admin").countDocuments();
         if (total <= 1) {
           return res.status(400).json({ erro: "Não é possível excluir o único administrador." });
@@ -889,6 +935,10 @@ async function iniciarServidor() {
       const { senha } = req.body;
       if (!senha) return res.status(400).json({ erro: "Nova senha é obrigatória." });
       try {
+        const admin = await db.collection("usuarios_admin").findOne({ _id: new ObjectId(req.params.id) });
+        if (admin?.usuarioPai) {
+          return res.status(400).json({ erro: "A senha do usuario pai deve ser alterada apenas por e-mail." });
+        }
         await db.collection("usuarios_admin").updateOne(
           { _id: new ObjectId(req.params.id) },
           { $set: { senha: hashSenha(senha) } }
@@ -926,6 +976,10 @@ async function iniciarServidor() {
     app.put("/api/admin/admins/:id/email", verificarTokenAdmin, async (req, res) => {
       const { email } = req.body;
       try {
+        const admin = await db.collection("usuarios_admin").findOne({ _id: new ObjectId(req.params.id) });
+        if (admin?.usuarioPai) {
+          return res.status(400).json({ erro: "O e-mail do usuario pai nao pode ser alterado pelo painel." });
+        }
         await db.collection("usuarios_admin").updateOne(
           { _id: new ObjectId(req.params.id) },
           { $set: { email: email ? email.trim().toLowerCase() : "" } }
@@ -1711,9 +1765,10 @@ async function iniciarServidor() {
       try {
         const { senha } = req.body || {};
         if (!senha) return res.status(401).json({ erro: "Senha obrigatória." });
-        const admins = await db.collection("usuarios_admin").find({}).toArray();
-        const senhaValida = admins.some(a => verificarSenha(senha, a.senha));
-        if (!senhaValida) return res.status(401).json({ erro: "Senha incorreta." });
+        const adminAutorizado = await obterUsuarioPai(db);
+        if (!adminAutorizado || !verificarSenha(senha, adminAutorizado.senha)) {
+          return res.status(401).json({ erro: "Apenas a senha do usuario pai libera esta limpeza." });
+        }
         await db.collection("logs_importacao").deleteMany({});
         res.json({ ok: true });
       } catch (error) {
@@ -1726,9 +1781,10 @@ async function iniciarServidor() {
       try {
         const { senha } = req.body || {};
         if (!senha) return res.status(401).json({ erro: "Senha obrigatória." });
-        const admins = await db.collection("usuarios_admin").find({}).toArray();
-        const senhaValida = admins.some(a => verificarSenha(senha, a.senha));
-        if (!senhaValida) return res.status(401).json({ erro: "Senha incorreta." });
+        const adminAutorizado = await obterUsuarioPai(db);
+        if (!adminAutorizado || !verificarSenha(senha, adminAutorizado.senha)) {
+          return res.status(401).json({ erro: "Apenas a senha do usuario pai libera esta limpeza." });
+        }
         const result = await db.collection("dados_brutos").deleteMany({});
         await db.collection("logs_importacao").deleteMany({ tipo: "dados_brutos" });
         cacheClear();

@@ -5837,7 +5837,7 @@ function guLimparHistorico() {
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:32px;width:360px;font-family:'DM Mono',monospace">
       <div style="font-size:1rem;font-weight:700;color:var(--text);margin-bottom:8px">Limpar histórico</div>
       <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:20px;line-height:1.6">
-        Digite sua senha de administrador para confirmar. Os dados do painel <strong style="color:var(--text)">não</strong> serão removidos.
+        Digite a senha do <strong style="color:var(--text)">usuário pai</strong> para confirmar. Os dados do painel <strong style="color:var(--text)">não</strong> serão removidos.
       </div>
       <input id="modal-limpar-senha" type="password" placeholder="Senha" autocomplete="current-password"
         style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-family:'DM Mono',monospace;font-size:0.8rem;outline:none;margin-bottom:8px">
@@ -6003,17 +6003,29 @@ async function guCarregarAdmins() {
       const emailLabel = email
         ? `<span style="color:var(--accent2);font-family:'DM Mono',monospace;font-size:0.78rem">${escHtml(email)}</span>`
         : `<span style="color:var(--muted);font-family:'DM Mono',monospace;font-size:0.74rem;font-style:italic">não cadastrado</span>`;
+      const usuarioPaiBadge = a.usuarioPai
+        ? ` <span style="color:var(--accent);font-family:'DM Mono',monospace;font-size:0.65rem;margin-left:8px">PAI</span>`
+        : '';
+      const senhaAction = a.usuarioPai
+        ? `<button class="btn-gu senha" title="A senha do usuario pai deve ser alterada por e-mail" disabled style="opacity:.45;cursor:not-allowed">Senha</button>`
+        : `<button class="btn-gu senha" onclick="guAbrirModalSenhaAdmin('${id}','${escHtml(a.usuario)}')">Senha</button>`;
+      const emailAction = a.usuarioPai
+        ? `<button class="btn-gu senha" title="O e-mail do usuario pai nao pode ser alterado pelo painel" disabled style="opacity:.45;cursor:not-allowed">E-mail</button>`
+        : `<button class="btn-gu senha" onclick="guAbrirModalEmailAdmin('${id}','${escHtml(a.usuario)}','${escHtml(email)}')">E-mail</button>`;
+      const excluirAction = a.usuarioPai
+        ? `<button class="btn-gu excluir" title="O usuario pai nao pode ser excluido" disabled style="opacity:.45;cursor:not-allowed">Excluir</button>`
+        : `<button class="btn-gu excluir" onclick="guExcluirAdmin('${id}','${escHtml(a.usuario)}')">Excluir</button>`;
       return `
         <tr>
-          <td class="td-user">${escHtml(a.usuario)}</td>
+          <td class="td-user">${escHtml(a.usuario)}${usuarioPaiBadge}</td>
           <td>${emailLabel}</td>
           <td class="td-date">${dataCriacao}</td>
           <td>
             <div class="td-actions">
               <button class="btn-gu senha" onclick="guAbrirModalUsuarioAdmin('${id}','${escHtml(a.usuario)}')">Nome</button>
-              <button class="btn-gu senha" onclick="guAbrirModalEmailAdmin('${id}','${escHtml(a.usuario)}','${escHtml(email)}')">E-mail</button>
-              <button class="btn-gu senha" onclick="guAbrirModalSenhaAdmin('${id}','${escHtml(a.usuario)}')">Senha</button>
-              <button class="btn-gu excluir" onclick="guExcluirAdmin('${id}','${escHtml(a.usuario)}')">Excluir</button>
+              ${emailAction}
+              ${senhaAction}
+              ${excluirAction}
             </div>
           </td>
         </tr>`;
