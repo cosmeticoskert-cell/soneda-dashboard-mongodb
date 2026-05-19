@@ -2733,6 +2733,14 @@ function d2DiaSemana(valor) {
   return ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][dt.getDay()];
 }
 
+function d2FormatarDataTabela(row) {
+  if (row?.iso && /^\d{4}-\d{2}-\d{2}$/.test(row.iso)) {
+    const [y, m, d] = row.iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return d2FormatarData(row?.data);
+}
+
 async function d2Renderizar() {
   mostrarBanner('d2-active-banner', d2_active, {cat:'CATEGORIA', data:'DATA'}, 'd2LimparAtivo');
 
@@ -2905,7 +2913,7 @@ function d2AtualizarGrafico(porDia, porDiaTabela, ag) {
     const fds  = dia === 'Sáb' || dia === 'Dom';
     const ativoData = d2_active.dim === 'data' && normalizeFilterValue(d2_active.val) === normalizeFilterValue(r.data) ? ' row-active' : '';
     return `<tr class="clickable-row${ativoData}" onclick="d2FiltrarPorData(this.dataset.v)" data-v="${String(r.data).replace(/"/g,'&quot;')}">
-      <td class="td-loja">${d2FormatarData(r.data)}</td>
+      <td class="td-loja">${d2FormatarDataTabela(r)}</td>
       <td class="td-loja" style="color:${fds ? '#ff9f6b' : 'var(--muted)'}">${dia}</td>
       <td class="td-qty">${r.qty.toLocaleString('pt-BR')}</td>
       <td><div class="td-bar-wrap">
