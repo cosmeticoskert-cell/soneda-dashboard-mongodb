@@ -1561,6 +1561,7 @@ async function enviarCSV(inputId, rota) {
     const totalLotes  = Math.ceil(dados.length / LINHAS_POR_LOTE);
     var importId      = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     let   totalInserido = 0;
+    let   retencaoInfo  = null;
 
     for (let i = 0; i < totalLotes; i++) {
       const fatia     = dados.slice(i * LINHAS_POR_LOTE, (i + 1) * LINHAS_POR_LOTE);
@@ -1593,13 +1594,17 @@ async function enviarCSV(inputId, rota) {
         admAtualizarUI();
         throw new Error('Sessão expirada. Faça login novamente.');
       }
-      if (!response.ok) throw new Error(`Lote ${i + 1}: ${data.erro || data.detalhe || 'Erro desconhecido'}`);
+      if (!response.ok) throw new Error(`Lote ${i + 1}: ${data.detalhe || data.erro || 'Erro desconhecido'}`);
 
       totalInserido += data.inserido || 0;
+      if (data.retencao) retencaoInfo = data.retencao;
     }
 
     setProgresso(totalLotes, totalLotes, '');
     status.innerHTML = `✔ Importação concluída — <strong>${totalInserido.toLocaleString('pt-BR')}</strong> registros inseridos em ${totalLotes} lote${totalLotes > 1 ? 's' : ''}.`;
+    if (retencaoInfo?.aplicado) {
+      status.innerHTML += ` Retencao aplicada: ${Number(retencaoInfo.registrosRemovidos || 0).toLocaleString('pt-BR')} registros antigos removidos; mantidos ${retencaoInfo.mesesMantidos?.length || 13} meses.`;
+    }
     status.className = 'import-status ok';
     // Limpa cache de agregados para que o painel recarregue com dados novos
     _agreMemCache.clear(); Object.keys(sessionStorage).filter(k => k.startsWith('agre__') || k.startsWith(AGRE_CACHE_PREFIX)).forEach(k => sessionStorage.removeItem(k));

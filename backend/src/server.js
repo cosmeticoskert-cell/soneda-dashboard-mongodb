@@ -1686,6 +1686,51 @@ async function iniciarServidor() {
       return resultados.length;
     }
 
+    async function aplicarRetencaoDadosBrutos(mesesParaManter = 13) {
+      const meses = await db.collection("dados_brutos").aggregate([
+        { $match: { _data_iso: { $type: "string", $regex: /^\d{4}-\d{2}-\d{2}$/ } } },
+        { $project: { mes: { $substr: ["$_data_iso", 0, 7] } } },
+        { $group: { _id: "$mes" } },
+        { $sort: { _id: -1 } }
+      ]).toArray();
+
+      if (meses.length <= mesesParaManter) {
+        return {
+          aplicado: false,
+          mesesEncontrados: meses.length,
+          mesesMantidos: meses.map(m => m._id),
+          mesesRemovidos: [],
+          registrosRemovidos: 0,
+          logsRemovidos: 0
+        };
+      }
+
+      const mesesMantidos = meses.slice(0, mesesParaManter).map(m => m._id);
+      const mesesRemovidos = meses.slice(mesesParaManter).map(m => m._id);
+      const limiteData = `${mesesMantidos[mesesMantidos.length - 1]}-01`;
+
+      const result = await db.collection("dados_brutos").deleteMany({ _data_iso: { $lt: limiteData } });
+      const importIdsAtivos = await db.collection("dados_brutos").distinct("_import_id", {
+        _import_id: { $exists: true, $ne: null }
+      });
+      const logsResult = await db.collection("logs_importacao").deleteMany({
+        tipo: "dados_brutos",
+        importId: { $nin: importIdsAtivos }
+      });
+
+      await atualizarFlagsMigracao();
+
+      return {
+        aplicado: true,
+        mesesEncontrados: meses.length,
+        mesesMantidos,
+        mesesRemovidos,
+        registrosRemovidos: result.deletedCount,
+        logsRemovidos: logsResult.deletedCount,
+        limiteMes: mesesMantidos[mesesMantidos.length - 1]
+      };
+    }
+
     app.post("/api/importar/dados-brutos", verificarToken, upload.single("file"), async (req, res) => {
       if (!req.file) return res.status(400).json({ erro: "Nenhum arquivo enviado." });
 
@@ -1697,6 +1742,7 @@ async function iniciarServidor() {
       const substituir   = req.body.substituir === 'true';
 
       try {
+        let retencao = null;
         // Modo substituir: apaga todos os dados brutos existentes antes do primeiro lote
         if (substituir && chunkIndex === 0) {
           await db.collection("dados_brutos").deleteMany({});
@@ -1715,6 +1761,7 @@ async function iniciarServidor() {
             importId, tipo: "dados_brutos", arquivo: nomeArquivo,
             usuario: req.usuarioLogado, total: totalRecords || inserido, data: new Date()
           });
+          retencao = await aplicarRetencaoDadosBrutos(13);
           cacheClear();
           await atualizarFlagsMigracao();
           // Re-migra _cat/_fam para novos registros (em background)
@@ -1726,6 +1773,7 @@ async function iniciarServidor() {
           ok: true,
           inserido,
           ultimo: isUltimo,
+          retencao,
           mensagem: isUltimo ? "Importação finalizada 🚀" : "Lote salvo"
         });
       } catch (error) {
