@@ -1559,7 +1559,7 @@ async function enviarCSV(inputId, rota) {
 
     const LINHAS_POR_LOTE = 1500;
     const totalLotes  = Math.ceil(dados.length / LINHAS_POR_LOTE);
-    const importId    = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    var importId      = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     let   totalInserido = 0;
 
     for (let i = 0; i < totalLotes; i++) {
@@ -1606,6 +1606,13 @@ async function enviarCSV(inputId, rota) {
 
   } catch (error) {
     console.error(error);
+    if (typeof importId !== 'undefined' && importId && rota === '/api/importar/dados-brutos') {
+      await fetch(`${API_BASE}/api/importar/dados-brutos/cancelar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ importId })
+      }).catch(() => {});
+    }
     status.textContent = `Erro ao importar: ${error.message}`;
     status.className = 'import-status err';
   }

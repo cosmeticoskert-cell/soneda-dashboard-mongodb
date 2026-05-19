@@ -1729,7 +1729,29 @@ async function iniciarServidor() {
           mensagem: isUltimo ? "Importação finalizada 🚀" : "Lote salvo"
         });
       } catch (error) {
+        try { if (req.file?.path) fs.unlinkSync(req.file.path); } catch (_) {}
+        if (importId) {
+          await db.collection("dados_brutos").deleteMany({ _import_id: importId });
+          await db.collection("logs_importacao").deleteMany({ importId, tipo: "dados_brutos" });
+          cacheClear();
+        }
         res.status(500).json({ erro: "Erro ao salvar no banco de dados", detalhe: error.message });
+      }
+    });
+
+    app.post("/api/importar/dados-brutos/cancelar", verificarToken, async (req, res) => {
+      try {
+        const { importId } = req.body || {};
+        if (!importId) return res.status(400).json({ erro: "importId obrigatorio." });
+
+        const result = await db.collection("dados_brutos").deleteMany({ _import_id: importId });
+        await db.collection("logs_importacao").deleteMany({ importId, tipo: "dados_brutos" });
+        cacheClear();
+        await atualizarFlagsMigracao();
+
+        res.json({ ok: true, removidos: result.deletedCount });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao cancelar importacao.", detalhe: error.message });
       }
     });
 
