@@ -130,7 +130,7 @@ function parseBRNumber(val) {
   if (/^\d{1,3}(?:\.\d{3})+,\d+$/.test(s)) return sign * parseFloat(s.replace(/\./g, '').replace(',', '.'));
   if (/^\d+,\d+$/.test(s)) return sign * parseFloat(s.replace(',', '.'));
   if (/^\d{1,3}(?:\.\d{3})+$/.test(s)) return sign * parseFloat(s.replace(/\./g, ''));
-  if (/^\d+(?:\.\d+)?$/.test(s)) return sign * parseFloat(s);
+  if (/^\d+\.\d+$/.test(s)) return sign * parseFloat(s);
   return val;
 }
 
@@ -191,6 +191,12 @@ function brToDouble(expr) {
 // Valor oficial de venda: usar somente a coluna bruta "Venda (R$)".
 function brValorExpr() {
   return brToDouble({ $getField: "Venda (R$)" });
+}
+
+function matchTextoOuNumero(valor) {
+  const s = String(valor);
+  const n = Number(s);
+  return Number.isFinite(n) && s.trim() !== "" ? { $in: [s, n] } : s;
 }
 
 // ─────────────────────────────────────────
@@ -991,9 +997,9 @@ async function iniciarServidor() {
         const di = req.query.di || null;
         const df = req.query.df || null;
         const match = {};
-        if (ano)  match["Ano"]   = String(ano);
+        if (ano)  match["Ano"]   = matchTextoOuNumero(ano);
         if (mes)  match["Mês"]   = String(mes);
-        if (loja) match["Loja"]  = String(loja);
+        if (loja) match["Loja"]  = matchTextoOuNumero(loja);
         if ((di || df) && _migData) {
           const dr = {};
           if (di) dr.$gte = di;
@@ -1094,9 +1100,9 @@ async function iniciarServidor() {
 
         // Match base aproveita os índices existentes (Ano, Mês, Loja, _data_iso)
         const baseMatch = {};
-        if (ano)  baseMatch["Ano"]  = String(ano);
+        if (ano)  baseMatch["Ano"]  = matchTextoOuNumero(ano);
         if (mes)  baseMatch["Mês"]  = String(mes);
-        if (loja) baseMatch["Loja"] = String(loja);
+        if (loja) baseMatch["Loja"] = matchTextoOuNumero(loja);
         if ((di || df) && _migData) {
           const dr = {};
           if (di) dr.$gte = di;
@@ -1128,7 +1134,7 @@ async function iniciarServidor() {
         if (familia) preStages.push({ $match: { _fam: familia } });
 
         // Filtros ativos (clique no gráfico) — aplicados seletivamente por branch
-        const mLoja    = aLoja    ? [{ $match: { "Loja": String(aLoja) } }]   : [];
+        const mLoja    = aLoja    ? [{ $match: { "Loja": matchTextoOuNumero(aLoja) } }]   : [];
         const mCat     = aCat     ? [{ $match: { _cat: aCat } }]              : [];
         const mFamilia = aFamilia ? [{ $match: { _fam: aFamilia } }]          : [];
 
@@ -1272,9 +1278,9 @@ async function iniciarServidor() {
         const df = req.query.df || null;
 
         const baseMatch = {};
-        if (ano)  baseMatch["Ano"]  = String(ano);
+        if (ano)  baseMatch["Ano"]  = matchTextoOuNumero(ano);
         if (mes)  baseMatch["Mês"]  = String(mes);
-        if (loja) baseMatch["Loja"] = String(loja);
+        if (loja) baseMatch["Loja"] = matchTextoOuNumero(loja);
         if ((di || df) && _migData) {
           const dr = {};
           if (di) dr.$gte = di;

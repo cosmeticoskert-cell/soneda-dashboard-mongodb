@@ -1715,6 +1715,7 @@ async function init() {
         // Strip BOM (﻿) from field names (e.g. first column from Excel CSV exports)
         const c = {};
         Object.keys(r).forEach(k => { c[k.replace(/^﻿/, '')] = r[k]; });
+        if (c.Ano !== undefined && c.Ano !== null) c.Ano = String(c.Ano).trim();
         if (c.Loja) c.Loja = normCodLoja(c.Loja);
         // Synthesize Data (DD/MM/YYYY) from Mês + Ano when no Data column exists
         if (!c.Data && !c.data) {
