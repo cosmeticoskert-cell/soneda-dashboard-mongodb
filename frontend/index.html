@@ -2930,6 +2930,36 @@ function d2FormatarDataTabela(row) {
   return d2FormatarData(row?.data);
 }
 
+function d2RenderSemDados() {
+  const d2ChartTotalEl = document.getElementById('d2-chart-total-val');
+  if (d2ChartTotalEl) d2ChartTotalEl.textContent = '0';
+  const d2StatusEl = document.getElementById('d2-status-msg');
+  if (d2StatusEl) d2StatusEl.textContent = '0 unidades vendidas · 0 períodos com venda';
+  document.getElementById('d2-kpi-total').textContent = '0';
+  document.getElementById('d2-kpi-dias').textContent = '0';
+  document.getElementById('d2-kpi-media').textContent = '0';
+  document.getElementById('d2-kpi-top').textContent = 'Sem dados';
+  document.getElementById('d2-kpi-top-sub').textContent = 'Sem dados';
+  const d2State = document.getElementById('d2-chart-state');
+  if (d2State) { d2State.style.display = 'flex'; d2State.innerHTML = 'Nenhum dado para os filtros selecionados.'; }
+  if (d2Chart) { d2Chart.destroy(); d2Chart = null; }
+  document.getElementById('d2-table-body').innerHTML = '<div class="no-data">Nenhum dado para os filtros selecionados</div>';
+  const catTotal = document.getElementById('cat2-total-val');
+  if (catTotal) catTotal.textContent = '0';
+  const famTotal = document.getElementById('fam2-total-val');
+  if (famTotal) famTotal.textContent = '0';
+  const catState = document.getElementById('cat2-state');
+  if (catState) { catState.style.display = 'flex'; catState.innerHTML = 'Nenhum dado.'; }
+  const famState = document.getElementById('fam2-state');
+  if (famState) { famState.style.display = 'flex'; famState.innerHTML = 'Nenhum dado.'; }
+  if (cat2Chart) { cat2Chart.destroy(); cat2Chart = null; }
+  if (fam2Chart) { fam2Chart.destroy(); fam2Chart = null; }
+  const catLegend = document.getElementById('cat2-legend');
+  if (catLegend) catLegend.innerHTML = '';
+  document.getElementById('cat2-table-body').innerHTML = '<div class="no-data">Nenhum dado para os filtros selecionados</div>';
+  document.getElementById('fam2-table-body').innerHTML = '<div class="no-data">Nenhum dado para os filtros selecionados</div>';
+}
+
 async function d2Renderizar() {
   mostrarBanner('d2-active-banner', d2_active, {cat:'CATEGORIA', data:'DATA'}, 'd2LimparAtivo');
 
@@ -3010,10 +3040,8 @@ function d2AtualizarGrafico(porDia, porDiaTabela, ag) {
   document.getElementById('d2-kpi-top-sub').textContent = top ? `${top.qty.toLocaleString('pt-BR')} un.` : '—';
 
   const d2State = document.getElementById('d2-chart-state');
-  if (porDia.length === 0) {
-    if (d2State) { d2State.style.display='flex'; d2State.innerHTML='Nenhum dado para os filtros selecionados.'; }
-    if (d2Chart) { d2Chart.destroy(); d2Chart = null; }
-    document.getElementById('d2-table-body').innerHTML = '<div class="no-data">Nenhum dado para os filtros selecionados</div>';
+  if (porDia.length === 0 || total <= 0) {
+    d2RenderSemDados();
     return;
   }
   if (d2State) d2State.style.display = 'none';
@@ -4940,6 +4968,30 @@ function vFmtR(v) {
   return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function vRenderSemDados() {
+  document.getElementById('v-kpi-total').textContent = vFmtR(0);
+  document.getElementById('v-kpi-lojas').textContent = '0';
+  document.getElementById('v-kpi-top').textContent = 'Sem dados';
+  document.getElementById('v-kpi-top-sub').textContent = 'Sem dados';
+  const statusEl = document.getElementById('v-status-msg');
+  if (statusEl) statusEl.textContent = `0 itens vendidos · 0 lojas · ${vFmtR(0)}`;
+  document.getElementById('v-chart-total-val').textContent = vFmtR(0);
+  const stateEl = document.getElementById('v-chart-state');
+  if (stateEl) { stateEl.style.display = 'flex'; stateEl.innerHTML = 'Nenhum dado para os filtros selecionados.'; }
+  if (vChartInst) { vChartInst.destroy(); vChartInst = null; }
+  document.getElementById('v-table-body').innerHTML = '<div class="no-data">Nenhum dado para os filtros selecionados</div>';
+  document.getElementById('v-cat1-total-val').textContent = vFmtR(0);
+  document.getElementById('v-fam1-total-val').textContent = vFmtR(0);
+  const catState = document.getElementById('v-cat1-state');
+  if (catState) { catState.style.display = 'flex'; catState.innerHTML = 'Nenhum dado para os filtros selecionados.'; }
+  const famState = document.getElementById('v-fam1-state');
+  if (famState) { famState.style.display = 'flex'; famState.innerHTML = 'Nenhum dado para os filtros selecionados.'; }
+  if (vCat1Chart) { vCat1Chart.destroy(); vCat1Chart = null; }
+  if (vFam1Chart) { vFam1Chart.destroy(); vFam1Chart = null; }
+  document.getElementById('v-cat1-table-body').innerHTML = '<div class="no-data">Nenhum dado para os filtros selecionados</div>';
+  document.getElementById('v-fam1-table-body').innerHTML = '<div class="no-data">Nenhum dado para os filtros selecionados</div>';
+}
+
 function vRenderKPIs(byLoja, ag) {
   const total = ag && ag.por_dia
     ? ag.por_dia.reduce((s, r) => s + r.valor, 0)
@@ -4970,6 +5022,7 @@ function vRenderGrafico(byLoja, ag) {
   const stateEl = document.getElementById('v-chart-state');
   if (byLoja.length === 0) {
     if (stateEl) { stateEl.style.display = 'flex'; stateEl.innerHTML = 'Nenhum dado para os filtros selecionados.'; }
+    if (vChartInst) { vChartInst.destroy(); vChartInst = null; }
     return;
   }
   if (stateEl) stateEl.style.display = 'none';
@@ -5130,6 +5183,8 @@ function vRenderCat1(data, preAg, ag) {
         ? 'Importe o <strong>De/Para Categorias</strong> na aba Importar para ver este gráfico.'
         : 'Nenhuma categoria encontrada para os filtros selecionados.';
     }
+    document.getElementById('v-cat1-table-body').innerHTML = '<div class="no-data">Nenhum dado</div>';
+    if (vCat1Chart) { vCat1Chart.destroy(); vCat1Chart = null; }
     return;
   }
   if (state) state.style.display = 'none';
@@ -5397,6 +5452,13 @@ async function vRenderizar() {
     })
     .filter(r => r.loja);
   const renderFromAg = (ag, byLoja) => {
+    const totalFiltrado = ag && ag.por_dia
+      ? ag.por_dia.reduce((s, r) => s + (r.valor || 0), 0)
+      : byLoja.reduce((s, r) => s + r.val, 0);
+    if (totalFiltrado <= 0) {
+      vRenderSemDados();
+      return;
+    }
     vRenderKPIs(byLoja, ag);
     vRenderGrafico(byLoja, ag);
     vRenderTabela(byLoja);
