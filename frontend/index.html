@@ -1383,6 +1383,7 @@ function limparCacheDashboard(notificarOutrasAbas = true) {
 
   rawDataPreviewOk = false;
   tabsRenderizadas.clear();
+  _prewarmStarted = false;
 
   if (notificarOutrasAbas) {
     try { localStorage.setItem(DASHBOARD_CACHE_BUST_KEY, String(Date.now())); } catch(e) {}
@@ -1709,7 +1710,7 @@ async function init() {
     const [brutosRes, deParaRes, catRes, resumoRes, catsRes, famsRes, filtrosRes] = await Promise.allSettled([
       fetchJSON('/api/dados-brutos?limite=5000'),
       fetchJSON('/api/lojas-depara'),
-      fetchJSON('/api/categorias-depara'),
+      Promise.resolve([]),
       fetchJSON('/api/dashboard/resumo'),
       fetchJSON('/api/dashboard/categorias'),
       fetchJSON('/api/dashboard/familias'),
@@ -1836,6 +1837,8 @@ async function init() {
     aplicarFiltroAtual('f');
     renderizar();
     tabsRenderizadas.add('vendas');
+    prepararAbasOcultas();
+    preaquecerAbasDashboard();
 
   } catch(err) {
     console.error(err);
@@ -2148,6 +2151,66 @@ function agreCache(key, data) {
 }
 
 // ── RENDER PRINCIPAL ──────────────────────────────────────────────────────────
+let _prewarmStarted = false;
+
+function prepararAbasOcultas() {
+  if (!document.getElementById('v-ano')?.options.length) {
+    vConstruirFiltros();
+    aplicarFiltroAtual('v');
+  }
+  if (!document.getElementById('d2-ano')?.options.length) {
+    d2ConstruirFiltros();
+    aplicarFiltroAtual('d2');
+  }
+  if (!document.getElementById('d3-ano')?.options.length) {
+    d3ConstruirFiltros();
+    aplicarFiltroAtual('d3');
+  }
+  if (!document.getElementById('se-ano')?.options.length) {
+    seConstruirFiltros();
+    aplicarFiltroAtual('se');
+  }
+}
+
+function preaquecerAbasDashboard() {
+  if (_prewarmStarted) return;
+  _prewarmStarted = true;
+
+  setTimeout(() => {
+    try {
+      prepararAbasOcultas();
+
+      const d2Params = buildAgreParams('d2', d2_active).toString();
+      const d2Key = 'd2v2:' + d2Params;
+      if (!agreCache(d2Key)) {
+        fetchJSON(`${API_BASE}/api/dashboard/agregados?${d2Params}`)
+          .then(ag => agreCache(d2Key, ag))
+          .catch(() => {});
+      }
+
+      const vParams = buildAgreParams('v', v_active).toString();
+      if (!agreCache(vParams)) {
+        fetchJSON(`${API_BASE}/api/dashboard/agregados?${vParams}`)
+          .then(ag => agreCache(vParams, ag))
+          .catch(() => {});
+      }
+
+      const d3Params = buildAgreParams('d3', d3_active).toString();
+      fetchJSON(`${API_BASE}/api/dashboard/estoque?${d3Params}`)
+        .then(ag => { d3_estoqueAg = ag; })
+        .catch(() => {});
+
+      const seParamsMain = seParams(true);
+      Promise.all([
+        fetchJSON(`${API_BASE}/api/dashboard/agregados?${seParamsMain}`),
+        fetchJSON(`${API_BASE}/api/dashboard/estoque?${seParamsMain}`)
+      ]).catch(() => {});
+    } catch(e) {
+      console.warn('Preaquecimento das abas falhou:', e.message);
+    }
+  }, 900);
+}
+
 async function renderizar() {
   mostrarBanner('f-active-banner', f_active,
     {loja:'FILIAL', cat:'CATEGORIA', familia:'FAMÍLIA'}, 'fLimparAtivo');
@@ -5359,10 +5422,22 @@ function trocarAba(aba, evt) {
 
   // Constrói filtros e renderiza apenas na primeira vez que a aba for aberta
   if (!tabsRenderizadas.has(aba)) {
-    if (aba === 'valor')   { vConstruirFiltros();  aplicarFiltroAtual('v');  vRenderizar();  }
-    if (aba === 'dia')     { d2ConstruirFiltros(); aplicarFiltroAtual('d2'); d2Renderizar(); }
-    if (aba === 'estoque') { d3ConstruirFiltros(); aplicarFiltroAtual('d3'); d3Renderizar(); }
-    if (aba === 'se')      { seConstruirFiltros(); aplicarFiltroAtual('se'); seRenderizar(); }
+    if (aba === 'valor') {
+      if (!document.getElementById('v-ano')?.options.length) { vConstruirFiltros(); aplicarFiltroAtual('v'); }
+      vRenderizar();
+    }
+    if (aba === 'dia') {
+      if (!document.getElementById('d2-ano')?.options.length) { d2ConstruirFiltros(); aplicarFiltroAtual('d2'); }
+      d2Renderizar();
+    }
+    if (aba === 'estoque') {
+      if (!document.getElementById('d3-ano')?.options.length) { d3ConstruirFiltros(); aplicarFiltroAtual('d3'); }
+      d3Renderizar();
+    }
+    if (aba === 'se') {
+      if (!document.getElementById('se-ano')?.options.length) { seConstruirFiltros(); aplicarFiltroAtual('se'); }
+      seRenderizar();
+    }
     tabsRenderizadas.add(aba);
   }
 }
