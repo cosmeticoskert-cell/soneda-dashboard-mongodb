@@ -5296,9 +5296,8 @@ async function vRenderizar() {
   }
 }
 
-// ── FILTRO DE MÊS/ANO ATUAL ───────────────────────────────────────────────────
+// ── FILTRO DE ANO ATUAL ───────────────────────────────────────────────────────
 function aplicarFiltroAtual(prefix) {
-  const MESES_ABREV = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const elAno = document.getElementById(`${prefix}-ano`);
   const elMes = document.getElementById(`${prefix}-mes`);
 
@@ -5311,17 +5310,13 @@ function aplicarFiltroAtual(prefix) {
   const anoAtual = dataMaisRecente
     ? String(dataMaisRecente.getFullYear())
     : String(new Date().getFullYear());
-  const mesAtual = dataMaisRecente
-    ? MESES_ABREV[dataMaisRecente.getMonth()]
-    : MESES_ABREV[new Date().getMonth()];
 
   if (elAno) {
     const temAno = [...elAno.options].some(o => o.value === anoAtual);
     if (temAno) elAno.value = anoAtual;
   }
   if (elMes) {
-    const temMes = [...elMes.options].some(o => o.value === mesAtual);
-    if (temMes) elMes.value = mesAtual;
+    elMes.value = '';
   }
 }
 
