@@ -1833,6 +1833,7 @@ async function init() {
         `${rawData.length.toLocaleString('pt-BR')} registros carregados do MongoDB · ${Object.keys(deParaMap).length} lojas no de-para`;
     }
 
+    preencherAnoMesTodasAbas();
     construirFiltros();
     aplicarFiltroAtual('f');
     renderizar();
@@ -1980,6 +1981,21 @@ function filtroLojas(apenasComDePara = false) {
     .map(l => String(l).trim())
     .filter(l => l && (!apenasComDePara || deParaMap[l]))
     .sort((a,b) => +a - +b);
+}
+
+function preencherAnoMesTodasAbas() {
+  const anos = filtroAnos();
+  const meses = filtroMeses();
+  ['f','v','d2','d3','se'].forEach(prefix => {
+    const anoEl = document.getElementById(`${prefix}-ano`);
+    const mesEl = document.getElementById(`${prefix}-mes`);
+    if (anoEl && anoEl.options.length <= 1) {
+      anoEl.innerHTML = '<option value="">Todos</option>' + anos.map(a => `<option>${a}</option>`).join('');
+    }
+    if (mesEl && mesEl.options.length <= 1) {
+      mesEl.innerHTML = '<option value="">Todos</option>' + meses.map(m => `<option>${m}</option>`).join('');
+    }
+  });
 }
 
 function construirFiltros() {
@@ -3470,16 +3486,14 @@ function d3ConstruirFiltros() {
   document.getElementById('d3-cat').innerHTML     = '<option value="">Todas</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
   document.getElementById('d3-familia').innerHTML = '<option value="">Todas</option>' + familias.map(f => `<option value="${f}">${f}</option>`).join('');
 
-  ['d3-ano','d3-mes','d3-di','d3-df','d3-loja','d3-cat','d3-familia',
-    'se-ano','se-mes','se-di','se-df','se-loja','se-cat','se-familia'].forEach(id =>
+  ['d3-ano','d3-mes','d3-di','d3-df','d3-loja','d3-cat','d3-familia'].forEach(id =>
     document.getElementById(id).addEventListener('change', d3Renderizar)
   );
   document.getElementById('d3-status-msg').textContent = document.getElementById('status-msg').textContent;
 }
 
 function d3LimparFiltros() {
-  ['d3-ano','d3-mes','d3-di','d3-df','d3-loja','d3-cat','d3-familia',
-    'se-ano','se-mes','se-di','se-df','se-loja','se-cat','se-familia'].forEach(id => document.getElementById(id).value = '');
+  ['d3-ano','d3-mes','d3-di','d3-df','d3-loja','d3-cat','d3-familia'].forEach(id => document.getElementById(id).value = '');
   d3_active = { dim: null, val: null };
   d3Renderizar();
 }
