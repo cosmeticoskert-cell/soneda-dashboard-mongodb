@@ -3862,10 +3862,10 @@ function d3RenderResumoEstoqueAgregado(ag) {
 
   document.getElementById('d3-kpi-total').textContent = total.toLocaleString('pt-BR');
   document.getElementById('d3-kpi-lojas').textContent = ativas;
-  document.getElementById('d3-kpi-top').textContent = top ? top.nome : 'â€”';
-  document.getElementById('d3-kpi-top-sub').textContent = top ? `${top.qty.toLocaleString('pt-BR')} un.` : 'â€”';
-  document.getElementById('d3-kpi-bot').textContent = bot ? bot.nome : 'â€”';
-  document.getElementById('d3-kpi-bot-sub').textContent = bot ? `${bot.qty.toLocaleString('pt-BR')} un.` : 'â€”';
+  document.getElementById('d3-kpi-top').textContent = top ? top.nome : 'Sem dados';
+  document.getElementById('d3-kpi-top-sub').textContent = top ? `${top.qty.toLocaleString('pt-BR')} un.` : 'Sem dados';
+  document.getElementById('d3-kpi-bot').textContent = bot ? bot.nome : 'Sem dados';
+  document.getElementById('d3-kpi-bot-sub').textContent = bot ? `${bot.qty.toLocaleString('pt-BR')} un.` : 'Sem dados';
   const totalEl = document.getElementById('d3-chart-total-val');
   if (totalEl) totalEl.textContent = total > 0 ? total.toLocaleString('pt-BR') : 'â€”';
   const statusEl = document.getElementById('d3-status-msg');
