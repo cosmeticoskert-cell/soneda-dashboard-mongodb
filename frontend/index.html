@@ -342,6 +342,7 @@
     <div class="filter-group"><label>Família</label><select id="se-familia"><option value="">Todas</option></select></div>
     <button class="btn-clear" onclick="seLimparFiltros()">↺ Limpar</button>
   </div>
+  <div id="se-active-banner" class="active-banner" style="display:none"></div>
 
   <div class="kpi-row">
     <div class="kpi-card"><div class="kpi-label">Sell Out Total</div><div class="kpi-value" id="se-kpi-sellout">—</div><div class="kpi-sub">unidades vendidas</div></div>
@@ -1372,6 +1373,7 @@ let seRiskSort     = { col: 'sellout', dir: 'desc' };
 let seViewMode     = 'loja';
 let seDataSort     = { col: 'data', dir: 'asc' };
 const tabsRenderizadas = new Set();
+const filtrosConstruidos = new Set();
 const DASHBOARD_CACHE_BUST_KEY = 'soneda_dashboard_cache_bust';
 const AGRE_CACHE_PREFIX = 'agre_v5__';
 
@@ -1834,8 +1836,7 @@ async function init() {
     }
 
     preencherAnoMesTodasAbas();
-    construirFiltros();
-    aplicarFiltroAtual('f');
+    garantirFiltrosAba('f');
     renderizar();
     tabsRenderizadas.add('vendas');
     prepararAbasOcultas();
@@ -2170,22 +2171,23 @@ function agreCache(key, data) {
 let _prewarmStarted = false;
 
 function prepararAbasOcultas() {
-  if (!document.getElementById('v-ano')?.options.length) {
-    vConstruirFiltros();
-    aplicarFiltroAtual('v');
-  }
-  if (!document.getElementById('d2-ano')?.options.length) {
-    d2ConstruirFiltros();
-    aplicarFiltroAtual('d2');
-  }
-  if (!document.getElementById('d3-ano')?.options.length) {
-    d3ConstruirFiltros();
-    aplicarFiltroAtual('d3');
-  }
-  if (!document.getElementById('se-ano')?.options.length) {
-    seConstruirFiltros();
-    aplicarFiltroAtual('se');
-  }
+  garantirFiltrosAba('v');
+  garantirFiltrosAba('d2');
+  garantirFiltrosAba('d3');
+  garantirFiltrosAba('se');
+}
+
+function garantirFiltrosAba(prefix) {
+  if (filtrosConstruidos.has(prefix)) return;
+
+  if (prefix === 'f') construirFiltros();
+  if (prefix === 'v') vConstruirFiltros();
+  if (prefix === 'd2') d2ConstruirFiltros();
+  if (prefix === 'd3') d3ConstruirFiltros();
+  if (prefix === 'se') seConstruirFiltros();
+
+  aplicarFiltroAtual(prefix);
+  filtrosConstruidos.add(prefix);
 }
 
 function preaquecerAbasDashboard() {
@@ -4416,6 +4418,7 @@ function seAplicarSort(data, sortState) {
 }
 
 function seRenderizar() {
+  mostrarBanner('se-active-banner', se_active, {loja:'FILIAL'}, 'seLimparFiltros');
   const ano = document.getElementById('se-ano').value;
   const mes = document.getElementById('se-mes').value;
   document.getElementById('se-chart-sub').textContent =
@@ -5447,19 +5450,19 @@ function trocarAba(aba, evt) {
   // Constrói filtros e renderiza apenas na primeira vez que a aba for aberta
   if (!tabsRenderizadas.has(aba)) {
     if (aba === 'valor') {
-      if (!document.getElementById('v-ano')?.options.length) { vConstruirFiltros(); aplicarFiltroAtual('v'); }
+      garantirFiltrosAba('v');
       vRenderizar();
     }
     if (aba === 'dia') {
-      if (!document.getElementById('d2-ano')?.options.length) { d2ConstruirFiltros(); aplicarFiltroAtual('d2'); }
+      garantirFiltrosAba('d2');
       d2Renderizar();
     }
     if (aba === 'estoque') {
-      if (!document.getElementById('d3-ano')?.options.length) { d3ConstruirFiltros(); aplicarFiltroAtual('d3'); }
+      garantirFiltrosAba('d3');
       d3Renderizar();
     }
     if (aba === 'se') {
-      if (!document.getElementById('se-ano')?.options.length) { seConstruirFiltros(); aplicarFiltroAtual('se'); }
+      garantirFiltrosAba('se');
       seRenderizar();
     }
     tabsRenderizadas.add(aba);
