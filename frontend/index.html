@@ -1353,6 +1353,8 @@ let d2_table_active = { dim: null, val: null };
 let f_renderAbort  = null;   // cancela fetch anterior ao aplicar novo filtro
 let v_renderAbort  = null;
 let d2_renderAbort = null;
+let d3_renderAbort = null;
+let d3_renderSeq   = 0;
 let d3_estoqueAg   = null;
 let se_renderAbort = null;
 const _agreMemCache = new Map(); // cache em memória (mais rápido que JSON.parse do sessionStorage)
@@ -3537,6 +3539,9 @@ function d3Filtrar(excl) {
 
 function d3Renderizar() {
   d3_estoqueAg = null;
+  const renderSeq = ++d3_renderSeq;
+  if (d3_renderAbort) d3_renderAbort.abort();
+  d3_renderAbort = new AbortController();
   mostrarBanner('d3-active-banner', d3_active, {loja:'FILIAL'}, 'd3LimparAtivo');
   const dados = d3Filtrar();
   const dadosTabela = d3Filtrar('loja');
@@ -3549,7 +3554,7 @@ function d3Renderizar() {
   document.getElementById('d3-line-sub').textContent  = periodo;
 
   d3SetEstoqueLoading();
-  d3FetchTotalEstoque();
+  d3FetchTotalEstoque(renderSeq, d3_renderAbort.signal);
   return;
 
   const mapLoja = {};
@@ -3790,11 +3795,12 @@ function d3Renderizar() {
   d3FetchTotalEstoque();
 }
 
-async function d3FetchTotalEstoque() {
+async function d3FetchTotalEstoque(renderSeq = d3_renderSeq, signal = null) {
   try {
     const params = buildAgreParams('d3', d3_active);
     params.set('escopo', 'loja');
-    const ag = await fetchJSON(`${API_BASE}/api/dashboard/estoque-resumo?${params}`);
+    const ag = await fetchJSON(`${API_BASE}/api/dashboard/estoque-resumo?${params}`, signal);
+    if (renderSeq !== d3_renderSeq) return;
     const totalCorreto  = ag.total       || 0;
     const ativasCorreto = ag.total_lojas || 0;
 
@@ -3804,7 +3810,7 @@ async function d3FetchTotalEstoque() {
     document.getElementById('d3-kpi-lojas').textContent = ativasCorreto;
 
     const d3ChartTotalEl = document.getElementById('d3-chart-total-val');
-    if (d3ChartTotalEl) d3ChartTotalEl.textContent = totalCorreto > 0 ? totalCorreto.toLocaleString('pt-BR') : '—';
+    if (d3ChartTotalEl) d3ChartTotalEl.textContent = totalCorreto.toLocaleString('pt-BR');
 
     const d3StatusEl = document.getElementById('d3-status-msg');
     if (d3StatusEl) d3StatusEl.textContent =
@@ -3814,14 +3820,16 @@ async function d3FetchTotalEstoque() {
 
     const detalhesParams = buildAgreParams('d3', d3_active);
     detalhesParams.set('detalhe', '1');
-    fetchJSON(`${API_BASE}/api/dashboard/estoque?${detalhesParams}`)
+    fetchJSON(`${API_BASE}/api/dashboard/estoque?${detalhesParams}`, signal)
       .then(agDetalhado => {
+        if (renderSeq !== d3_renderSeq) return;
         d3_estoqueAg = agDetalhado;
         d3RenderRotatividadeAgregada(agDetalhado);
         d3RenderLineAgregado(agDetalhado);
       })
       .catch(() => {});
   } catch(e) {
+    if (e.name === 'AbortError') return;
     // falha silenciosa: mantém os valores do rawData já exibidos
   }
 }
@@ -3867,7 +3875,7 @@ function d3RenderResumoEstoqueAgregado(ag) {
   document.getElementById('d3-kpi-bot').textContent = bot ? bot.nome : 'Sem dados';
   document.getElementById('d3-kpi-bot-sub').textContent = bot ? `${bot.qty.toLocaleString('pt-BR')} un.` : 'Sem dados';
   const totalEl = document.getElementById('d3-chart-total-val');
-  if (totalEl) totalEl.textContent = total > 0 ? total.toLocaleString('pt-BR') : 'â€”';
+  if (totalEl) totalEl.textContent = total.toLocaleString('pt-BR');
   const statusEl = document.getElementById('d3-status-msg');
   if (statusEl) statusEl.textContent = `${total.toLocaleString('pt-BR')} unidades em estoque Â· ${ativas} loja${ativas !== 1 ? 's' : ''}`;
 
