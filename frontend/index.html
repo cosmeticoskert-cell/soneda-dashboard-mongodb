@@ -1330,6 +1330,7 @@ let familiaMap   = {};
 let produtoMap   = {};
 let catList      = []; // lista canônica de categorias vinda do backend
 let familiaList  = []; // lista canônica de famílias vinda do backend
+let filterOptions = { anos: [], meses: [], lojas: [] };
 let chartInst      = null;
 let vChartInst     = null;
 let d2Chart        = null;
@@ -1705,13 +1706,14 @@ async function enviarXLSX(inputId, rota) {
 async function init() {
   try {
     
-    const [brutosRes, deParaRes, catRes, resumoRes, catsRes, famsRes] = await Promise.allSettled([
+    const [brutosRes, deParaRes, catRes, resumoRes, catsRes, famsRes, filtrosRes] = await Promise.allSettled([
       fetchJSON('/api/dados-brutos?limite=5000'),
       fetchJSON('/api/lojas-depara'),
       fetchJSON('/api/categorias-depara'),
       fetchJSON('/api/dashboard/resumo'),
       fetchJSON('/api/dashboard/categorias'),
-      fetchJSON('/api/dashboard/familias')
+      fetchJSON('/api/dashboard/familias'),
+      fetchJSON('/api/dashboard/filtros')
     ]);
 
     if (deParaRes.status === 'fulfilled') {
@@ -1776,6 +1778,17 @@ async function init() {
       try {
         familiaList = (Array.isArray(famsRes.value) ? famsRes.value : [])
           .map(r => r._id).filter(v => v && v !== '-' && v !== '–').sort();
+      } catch(e) {}
+    }
+
+    if (filtrosRes.status === 'fulfilled') {
+      try {
+        const filtros = filtrosRes.value || {};
+        filterOptions = {
+          anos: Array.isArray(filtros.anos) ? filtros.anos : [],
+          meses: Array.isArray(filtros.meses) ? filtros.meses : [],
+          lojas: Array.isArray(filtros.lojas) ? filtros.lojas : []
+        };
       } catch(e) {}
     }
 
@@ -1943,13 +1956,34 @@ function ocultarEstado() {
 }
 
 // ── FILTROS ───────────────────────────────────────────────────────────────────
-function construirFiltros() {
-  const anos  = [...new Set(rawData.map(r => col(r,'Ano')).filter(Boolean))].sort();
-  const meses = [...new Set(rawData.map(r => col(r,'Mês','Mes')).filter(Boolean))];
-  const ORD   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
+function filtroAnos() {
+  return filterOptions.anos.length
+    ? filterOptions.anos
+    : [...new Set(rawData.map(r => col(r,'Ano')).filter(Boolean))].sort();
+}
 
-  const lojas = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(l => l && deParaMap[l]))].sort((a,b) => +a - +b);
+function filtroMeses() {
+  if (filterOptions.meses.length) return filterOptions.meses;
+  const meses = [...new Set(rawData.map(r => col(r,'Mês','Mes')).filter(Boolean))];
+  const ORD = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
+}
+
+function filtroLojas(apenasComDePara = false) {
+  const base = filterOptions.lojas.length
+    ? filterOptions.lojas
+    : [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(Boolean))];
+  return base
+    .map(l => String(l).trim())
+    .filter(l => l && (!apenasComDePara || deParaMap[l]))
+    .sort((a,b) => +a - +b);
+}
+
+function construirFiltros() {
+  const anos  = filtroAnos();
+  const meses = filtroMeses();
+
+  const lojas = filtroLojas(true);
   const cats    = catList.length    ? catList    : [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
   const familias = familiaList.length ? familiaList : [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
 
@@ -2677,12 +2711,10 @@ function renderTabela(byLoja) {
 
 // ── ABA 2: VENDA POR DIA ──────────────────────────────────────────────────────
 function d2ConstruirFiltros() {
-  const anos  = [...new Set(rawData.map(r => col(r,'Ano')).filter(Boolean))].sort();
-  const meses = [...new Set(rawData.map(r => col(r,'Mês','Mes')).filter(Boolean))];
-  const ORD   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
+  const anos  = filtroAnos();
+  const meses = filtroMeses();
 
-  const lojas = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(l => l && deParaMap[l]))].sort((a,b) => +a - +b);
+  const lojas = filtroLojas(true);
   const cats  = catList.length ? catList : [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
 
   const familias = familiaList.length ? familiaList : [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
@@ -3349,11 +3381,9 @@ function t2OrdenarPor(coluna) {
 
 // ── ABA 3: ESTOQUE ────────────────────────────────────────────────────────────
 function d3ConstruirFiltros() {
-  const anos  = [...new Set(rawData.map(r => col(r,'Ano')).filter(Boolean))].sort();
-  const meses = [...new Set(rawData.map(r => col(r,'Mês','Mes')).filter(Boolean))];
-  const ORD   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
-  const lojas = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(l => l && deParaMap[l]))].sort((a,b) => +a - +b);
+  const anos  = filtroAnos();
+  const meses = filtroMeses();
+  const lojas = filtroLojas(true);
   const cats  = catList.length ? catList : [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
 
   const familias = familiaList.length ? familiaList : [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
@@ -4158,13 +4188,11 @@ function d3RenderRotatividadeTabela(byProdInput, byCatInput) {
 }
 
 function seConstruirFiltros() {
-  const anos  = [...new Set(rawData.map(r => col(r,'Ano')).filter(Boolean))].sort();
-  const meses = [...new Set(rawData.map(r => col(r,'Mês','Mes')).filter(Boolean))];
-  const ORD   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
+  const anos  = filtroAnos();
+  const meses = filtroMeses();
 
   // Regra: só mostrar lojas existentes no De-Para
-  const lojas = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(l => l && deParaMap[String(l).trim()]))].sort((a,b) => +a - +b);
+  const lojas = filtroLojas(true);
   const cats  = catList.length ? catList : [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
   const familias = familiaList.length ? familiaList : [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
 
@@ -4721,11 +4749,9 @@ function seRenderTabelaDataAgregada(porData) {
 
 // ── ABA VALOR: VENDA VALOR (R$) ───────────────────────────────────────────────
 function vConstruirFiltros() {
-  const anos     = [...new Set(rawData.map(r => col(r,'Ano')).filter(Boolean))].sort();
-  const meses    = [...new Set(rawData.map(r => col(r,'Mês','Mes')).filter(Boolean))];
-  const ORD      = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
-  const lojas    = [...new Set(rawData.map(r => col(r,'Loja','loja')).filter(Boolean))].sort((a,b) => +a - +b);
+  const anos     = filtroAnos();
+  const meses    = filtroMeses();
+  const lojas    = filtroLojas(false);
   const cats     = catList.length ? catList : [...new Set(rawData.map(r => getCat(r)).filter(Boolean))].sort();
   const familias = familiaList.length ? familiaList : [...new Set(rawData.map(r => getFamilia(r)).filter(Boolean))].sort();
 

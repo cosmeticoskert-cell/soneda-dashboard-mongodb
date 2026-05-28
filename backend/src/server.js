@@ -1636,6 +1636,30 @@ async function iniciarServidor() {
     // ─────────────────────────────────────
     // VENDAS POR DIA
     // ─────────────────────────────────────
+    app.get("/api/dashboard/filtros", async (req, res) => {
+      try {
+        const [anosRaw, mesesNomeRaw, mesesNumeroRaw, lojasRaw] = await Promise.all([
+          db.collection("dados_brutos").distinct("Ano"),
+          db.collection("dados_brutos").distinct("MÃªs"),
+          db.collection("dados_brutos").distinct("Mes"),
+          db.collection("dados_brutos").distinct("Loja")
+        ]);
+
+        const anos = [...new Set(anosRaw.map(v => String(v ?? "").trim()).filter(Boolean))]
+          .sort();
+        const meses = [...new Set([...mesesNomeRaw, ...mesesNumeroRaw]
+          .map(normalizarMes)
+          .filter(Boolean))]
+          .sort((a, b) => MESES_ABREV.indexOf(a) - MESES_ABREV.indexOf(b));
+        const lojas = [...new Set(lojasRaw.map(v => String(v ?? "").trim()).filter(Boolean))]
+          .sort((a, b) => Number(a) - Number(b));
+
+        res.json({ anos, meses, lojas });
+      } catch (error) {
+        res.status(500).json({ erro: "Erro ao buscar filtros", detalhe: error.message });
+      }
+    });
+
     app.get("/api/dashboard/vendas-por-dia", async (req, res) => {
       try {
         const resultado = await db.collection("dados_brutos").aggregate([
