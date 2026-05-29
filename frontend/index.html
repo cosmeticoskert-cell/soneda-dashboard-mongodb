@@ -3476,8 +3476,13 @@ function renderCat2(data, preAg) {
 
   let totCat = cats.map(c => ({ cat: c, qty: Object.values(mapCatDia[c] || {}).reduce((s,v)=>s+v,0) }));
   const totalGeral = totCat.reduce((s,r)=>s+r.qty,0);
+  const totalGrafico = d2SelC
+    ? totCat
+        .filter(r => normalizeFilterValue(r.cat) === normalizeFilterValue(d2SelC))
+        .reduce((s,r)=>s+r.qty,0)
+    : totalGeral;
   const cat2TotalEl = document.getElementById('cat2-total-val');
-  if (cat2TotalEl) cat2TotalEl.textContent = totalGeral > 0 ? totalGeral.toLocaleString('pt-BR') : '—';
+  if (cat2TotalEl) cat2TotalEl.textContent = totalGrafico > 0 ? totalGrafico.toLocaleString('pt-BR') : '—';
 
   totCat = [...totCat].sort((a,b) => {
     let va, vb;
