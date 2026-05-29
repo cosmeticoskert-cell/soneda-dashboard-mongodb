@@ -3581,11 +3581,16 @@ function renderFam2(data, preAg) {
   }
   if (fam2Chart) { fam2Chart.destroy(); fam2Chart = null; }
 
+  const d2SelF = d2_active.dim === 'familia' ? d2_active.val : null;
+  const famsGrafico = d2SelF
+    ? fams.filter(f => normalizeFilterValue(f) === normalizeFilterValue(d2SelF))
+    : fams;
+
   fam2Chart = new Chart(canvas2, {
     type: 'line',
     data: {
       labels: dias.map(d2FormatarData),
-      datasets: fams.map((f, i) => ({
+      datasets: famsGrafico.map((f, i) => ({
         label: f,
         data: dias.map(d => mapFamDia[f]?.[d] || 0),
         borderColor:     PALETTE[i%PALETTE.length],
@@ -3616,8 +3621,13 @@ function renderFam2(data, preAg) {
 
   let totFam = fams.map(f => ({ fam: f, qty: Object.values(mapFamDia[f] || {}).reduce((s,v)=>s+v,0) }));
   const totalGeral = totFam.reduce((s,r)=>s+r.qty,0);
+  const totalGrafico = d2SelF
+    ? totFam
+        .filter(r => normalizeFilterValue(r.fam) === normalizeFilterValue(d2SelF))
+        .reduce((s,r)=>s+r.qty,0)
+    : totalGeral;
   const fam2TotalEl = document.getElementById('fam2-total-val');
-  if (fam2TotalEl) fam2TotalEl.textContent = totalGeral > 0 ? totalGeral.toLocaleString('pt-BR') : '—';
+  if (fam2TotalEl) fam2TotalEl.textContent = totalGrafico > 0 ? totalGrafico.toLocaleString('pt-BR') : '—';
 
   totFam = [...totFam].sort((a,b) => {
     let va, vb;
@@ -3639,7 +3649,6 @@ function renderFam2(data, preAg) {
     ...totFam.filter(r => r.fam !== SEM_MAP_F2),
     ...totFam.filter(r => r.fam === SEM_MAP_F2)
   ];
-  const d2SelF = d2_active.dim === 'familia' ? d2_active.val : null;
   const linhas = famOrdenadas.map(r => {
     const pct  = totalGeral > 0 ? ((r.qty/totalGeral)*100).toFixed(1) : 0;
     const barW = ((r.qty/maxQ)*100).toFixed(1);
