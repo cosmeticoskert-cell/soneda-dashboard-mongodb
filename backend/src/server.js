@@ -276,18 +276,54 @@ function mesDeData(valor) {
   return mesNum >= 1 && mesNum <= 12 ? MESES_ABREV[mesNum - 1] : "";
 }
 
+function listaParam(valor) {
+  const base = Array.isArray(valor) ? valor : String(valor ?? "").split(",");
+  return base.map(v => String(v ?? "").trim()).filter(Boolean);
+}
+
+function matchTextoOuNumeroLista(valores) {
+  const itens = [];
+  listaParam(valores).forEach(valor => {
+    itens.push(valor);
+    const numero = Number(valor);
+    if (!Number.isNaN(numero)) itens.push(numero);
+  });
+  const unicos = [...new Set(itens)];
+  if (!unicos.length) return null;
+  return unicos.length === 1 ? unicos[0] : { $in: unicos };
+}
+
+function aplicarFiltroAno(match, ano) {
+  const criterio = matchTextoOuNumeroLista(ano);
+  if (criterio !== null) match["Ano"] = criterio;
+}
+
+function matchListaTexto(valor) {
+  const valores = listaParam(valor);
+  if (!valores.length) return null;
+  return valores.length === 1 ? valores[0] : { $in: valores };
+}
+
 function aplicarFiltroMes(match, mes) {
-  const mesAbrev = normalizarMes(mes);
-  if (!mesAbrev) return;
-  const mesNum = MESES_ABREV.indexOf(mesAbrev) + 1;
-  match.$or = [
-    { "Mês": mesAbrev },
-    { "Mes": mesAbrev },
-    { "Mês": String(mesNum) },
-    { "Mes": String(mesNum) },
-    { "Mês": mesNum },
-    { "Mes": mesNum }
-  ];
+  const meses = listaParam(mes)
+    .map(normalizarMes)
+    .filter(Boolean);
+  if (!meses.length) return;
+
+  const opcoes = [];
+  meses.forEach(mesAbrev => {
+    const mesNum = MESES_ABREV.indexOf(mesAbrev) + 1;
+    if (mesNum <= 0) return;
+    opcoes.push(
+      { "Mês": mesAbrev },
+      { "Mes": mesAbrev },
+      { "Mês": String(mesNum) },
+      { "Mes": String(mesNum) },
+      { "Mês": mesNum },
+      { "Mes": mesNum }
+    );
+  });
+  if (opcoes.length) match.$or = opcoes;
 }
 
 function mesNumeroExpr() {
@@ -1259,9 +1295,9 @@ async function iniciarServidor() {
         const di = req.query.di || null;
         const df = req.query.df || null;
         const match = {};
-        if (ano)  match["Ano"]   = matchTextoOuNumero(ano);
+        if (ano)  aplicarFiltroAno(match, ano);
         if (mes)  aplicarFiltroMes(match, mes);
-        if (loja) match["Loja"]  = matchTextoOuNumero(loja);
+        if (loja) match["Loja"]  = matchTextoOuNumeroLista(loja);
         if ((di || df) && _migData) {
           const dr = {};
           if (di) dr.$gte = di;
@@ -1364,9 +1400,9 @@ async function iniciarServidor() {
 
         // Match base aproveita os índices existentes (Ano, Mês, Loja, _data_iso)
         const baseMatch = {};
-        if (ano)  baseMatch["Ano"]  = String(ano);
+        if (ano)  aplicarFiltroAno(baseMatch, ano);
         if (mes)  aplicarFiltroMes(baseMatch, mes);
-        if (loja) baseMatch["Loja"] = matchTextoOuNumero(loja);
+        if (loja) baseMatch["Loja"] = matchTextoOuNumeroLista(loja);
         if ((di || df) && _migData) {
           const dr = {};
           if (di) dr.$gte = di;
@@ -1394,8 +1430,8 @@ async function iniciarServidor() {
         }
 
         // Filtros dropdown de cat/fam — comuns a todos os branches do facet
-        if (cat)     preStages.push({ $match: { _cat: cat } });
-        if (familia) preStages.push({ $match: { _fam: familia } });
+        if (cat)     preStages.push({ $match: { _cat: matchListaTexto(cat) } });
+        if (familia) preStages.push({ $match: { _fam: matchListaTexto(familia) } });
 
         // Filtros ativos (clique no gráfico) — aplicados seletivamente por branch
         const mLoja    = aLoja    ? [{ $match: { "Loja": matchTextoOuNumero(aLoja) } }]   : [];
@@ -1488,11 +1524,11 @@ async function iniciarServidor() {
         const df = req.query.df || null;
 
         const baseMatch = {};
-        if (ano)  baseMatch["Ano"] = matchTextoOuNumero(ano);
+        if (ano)  aplicarFiltroAno(baseMatch, ano);
         if (mes)  aplicarFiltroMes(baseMatch, mes);
-        if (loja) baseMatch["Loja"] = matchTextoOuNumero(loja);
-        if (cat) baseMatch["_cat"] = cat;
-        if (familia) baseMatch["_fam"] = familia;
+        if (loja) baseMatch["Loja"] = matchTextoOuNumeroLista(loja);
+        if (cat) baseMatch["_cat"] = matchListaTexto(cat);
+        if (familia) baseMatch["_fam"] = matchListaTexto(familia);
         if ((di || df) && _migData) {
           const dr = {};
           if (di) dr.$gte = di;
@@ -1542,9 +1578,9 @@ async function iniciarServidor() {
         const df = req.query.df || null;
 
         const baseMatch = {};
-        if (ano)  baseMatch["Ano"]  = matchTextoOuNumero(ano);
+        if (ano)  aplicarFiltroAno(baseMatch, ano);
         if (mes)  aplicarFiltroMes(baseMatch, mes);
-        if (loja) baseMatch["Loja"] = matchTextoOuNumero(loja);
+        if (loja) baseMatch["Loja"] = matchTextoOuNumeroLista(loja);
         if ((di || df) && _migData) {
           const dr = {};
           if (di) dr.$gte = di;
@@ -1574,8 +1610,8 @@ async function iniciarServidor() {
         }
         const catCampo = _migCat ? "_cat" : "_cat_atual";
         const famCampo = _migCat ? "_fam" : "_fam_atual";
-        if (cat)     preStages.push({ $match: { [catCampo]: cat } });
-        if (familia) preStages.push({ $match: { [famCampo]: familia } });
+        if (cat)     preStages.push({ $match: { [catCampo]: matchListaTexto(cat) } });
+        if (familia) preStages.push({ $match: { [famCampo]: matchListaTexto(familia) } });
         const estoqueExpr = brToDouble({ $getField: "Estoque Diario" });
         const dateGroupExpr = {
           $ifNull: [

@@ -46,6 +46,35 @@
   .filter-group input[type="date"] { background-image: none; padding-right: 14px; color-scheme: dark; }
   .filter-group select:focus,
   .filter-group input[type="date"]:focus { outline: none; border-color: var(--accent); }
+  .native-multi-hidden { display: none; }
+  .multi-select { position: relative; width: 100%; }
+  .multi-select-btn {
+    width: 100%; min-height: 39px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 14px; border-radius: 8px; font-family: 'Figtree', sans-serif; font-size: 0.9rem;
+    cursor: pointer; transition: border-color .2s; text-align: left;
+  }
+  .multi-select-btn::after {
+    content: ''; width: 12px; height: 8px; flex: 0 0 auto;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%235a6080' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") center/12px 8px no-repeat;
+  }
+  .multi-select.open .multi-select-btn,
+  .multi-select-btn:focus { outline: none; border-color: var(--accent); }
+  .multi-select-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .multi-select-menu {
+    position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0;
+    max-height: 260px; overflow: auto; display: none;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px; box-shadow: 0 18px 40px rgba(0,0,0,.38);
+  }
+  .multi-select.open .multi-select-menu { display: block; }
+  .multi-select-option {
+    display: flex; align-items: center; gap: 8px; padding: 8px 9px; border-radius: 6px;
+    color: var(--text); font-size: 0.86rem; cursor: pointer; user-select: none;
+  }
+  .multi-select-option:hover { background: rgba(255,255,255,0.06); }
+  .multi-select-option input { accent-color: var(--accent); }
+  .multi-select-option.all { color: var(--accent); font-family: 'DM Mono', monospace; font-size: 0.76rem; text-transform: uppercase; }
   .btn-clear { background: transparent; border: 1px solid var(--border); color: var(--text-dim); padding: 10px 20px; border-radius: 8px; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 0.78rem; letter-spacing: .5px; transition: all .2s; white-space: nowrap; align-self: flex-end; }
   .btn-clear:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -282,13 +311,13 @@
   <p class="section-sub" id="status-msg">Carregando dados...</p>
 
   <div class="filters-row">
-    <div class="filter-group"><label>Ano</label><select id="f-ano"><option value="">Todos</option></select></div>
-    <div class="filter-group"><label>Mês</label><select id="f-mes"><option value="">Todos</option></select></div>
+    <div class="filter-group"><label>Ano</label><select id="f-ano" data-multi-filter="1" multiple><option value="">Todos</option></select></div>
+    <div class="filter-group"><label>Mês</label><select id="f-mes" data-multi-filter="1" multiple><option value="">Todos</option></select></div>
     <div class="filter-group"><label>Data início</label><input type="date" id="f-di"></div>
     <div class="filter-group"><label>Data fim</label><input type="date" id="f-df"></div>
-    <div class="filter-group"><label>Loja</label><select id="f-loja"><option value="">Todas</option></select></div>
-    <div class="filter-group"><label>Categoria</label><select id="f-cat"><option value="">Todas</option></select></div>
-    <div class="filter-group"><label>Família</label><select id="f-familia"><option value="">Todas</option></select></div>
+    <div class="filter-group"><label>Loja</label><select id="f-loja" data-multi-filter="1" multiple><option value="">Todas</option></select></div>
+    <div class="filter-group"><label>Categoria</label><select id="f-cat" data-multi-filter="1" multiple><option value="">Todas</option></select></div>
+    <div class="filter-group"><label>Família</label><select id="f-familia" data-multi-filter="1" multiple><option value="">Todas</option></select></div>
     <button class="btn-clear" onclick="limparFiltros()">↺ Limpar</button>
   </div>
   <div id="f-active-banner" class="active-banner" style="display:none"></div>
@@ -333,13 +362,13 @@
   <p class="section-sub" id="se-status-msg">Carregando dados...</p>
 
   <div class="filters-row">
-    <div class="filter-group"><label>Ano</label><select id="se-ano"><option value="">Todos</option></select></div>
-    <div class="filter-group"><label>Mês</label><select id="se-mes"><option value="">Todos</option></select></div>
+    <div class="filter-group"><label>Ano</label><select id="se-ano" data-multi-filter="1" multiple><option value="">Todos</option></select></div>
+    <div class="filter-group"><label>Mês</label><select id="se-mes" data-multi-filter="1" multiple><option value="">Todos</option></select></div>
     <div class="filter-group"><label>Data início</label><input type="date" id="se-di"></div>
     <div class="filter-group"><label>Data fim</label><input type="date" id="se-df"></div>
-    <div class="filter-group"><label>Loja</label><select id="se-loja"><option value="">Todas</option></select></div>
-    <div class="filter-group"><label>Categoria</label><select id="se-cat"><option value="">Todas</option></select></div>
-    <div class="filter-group"><label>Família</label><select id="se-familia"><option value="">Todas</option></select></div>
+    <div class="filter-group"><label>Loja</label><select id="se-loja" data-multi-filter="1" multiple><option value="">Todas</option></select></div>
+    <div class="filter-group"><label>Categoria</label><select id="se-cat" data-multi-filter="1" multiple><option value="">Todas</option></select></div>
+    <div class="filter-group"><label>Família</label><select id="se-familia" data-multi-filter="1" multiple><option value="">Todas</option></select></div>
     <button class="btn-clear" onclick="seLimparFiltros()">↺ Limpar</button>
   </div>
   <div id="se-active-banner" class="active-banner" style="display:none"></div>
@@ -922,11 +951,11 @@
   <div class="filters-row">
     <div class="filter-group">
       <label>Ano</label>
-      <select id="v-ano"><option value="">Todos</option></select>
+      <select id="v-ano" data-multi-filter="1" multiple><option value="">Todos</option></select>
     </div>
     <div class="filter-group">
       <label>Mês</label>
-      <select id="v-mes"><option value="">Todos</option></select>
+      <select id="v-mes" data-multi-filter="1" multiple><option value="">Todos</option></select>
     </div>
     <div class="filter-group">
       <label>Data início</label>
@@ -938,15 +967,15 @@
     </div>
     <div class="filter-group">
       <label>Loja</label>
-      <select id="v-loja"><option value="">Todas</option></select>
+      <select id="v-loja" data-multi-filter="1" multiple><option value="">Todas</option></select>
     </div>
     <div class="filter-group">
       <label>Categoria</label>
-      <select id="v-cat"><option value="">Todas</option></select>
+      <select id="v-cat" data-multi-filter="1" multiple><option value="">Todas</option></select>
     </div>
     <div class="filter-group">
       <label>Família</label>
-      <select id="v-familia"><option value="">Todas</option></select>
+      <select id="v-familia" data-multi-filter="1" multiple><option value="">Todas</option></select>
     </div>
     <button class="btn-clear" onclick="vLimparFiltros()">↺ Limpar</button>
   </div>
@@ -1060,11 +1089,11 @@
   <div class="filters-row">
     <div class="filter-group">
       <label>Ano</label>
-      <select id="d2-ano"><option value="">Todos</option></select>
+      <select id="d2-ano" data-multi-filter="1" multiple><option value="">Todos</option></select>
     </div>
     <div class="filter-group">
       <label>Mês</label>
-      <select id="d2-mes"><option value="">Todos</option></select>
+      <select id="d2-mes" data-multi-filter="1" multiple><option value="">Todos</option></select>
     </div>
     <div class="filter-group">
       <label>Data início</label>
@@ -1076,15 +1105,15 @@
     </div>
     <div class="filter-group">
       <label>Loja</label>
-      <select id="d2-loja"><option value="">Todas</option></select>
+      <select id="d2-loja" data-multi-filter="1" multiple><option value="">Todas</option></select>
     </div>
     <div class="filter-group">
       <label>Categoria</label>
-      <select id="d2-cat"><option value="">Todas</option></select>
+      <select id="d2-cat" data-multi-filter="1" multiple><option value="">Todas</option></select>
     </div>
     <div class="filter-group">
       <label>Família</label>
-      <select id="d2-familia"><option value="">Todas</option></select>
+      <select id="d2-familia" data-multi-filter="1" multiple><option value="">Todas</option></select>
     </div>
     <button class="btn-clear" onclick="d2LimparFiltros()">↺ Limpar</button>
   </div>
@@ -1203,11 +1232,11 @@
   <div class="filters-row">
     <div class="filter-group">
       <label>Ano</label>
-      <select id="d3-ano"><option value="">Todos</option></select>
+      <select id="d3-ano" data-multi-filter="1" multiple><option value="">Todos</option></select>
     </div>
     <div class="filter-group">
       <label>Mês</label>
-      <select id="d3-mes"><option value="">Todos</option></select>
+      <select id="d3-mes" data-multi-filter="1" multiple><option value="">Todos</option></select>
     </div>
     <div class="filter-group">
       <label>Data início</label>
@@ -1219,15 +1248,15 @@
     </div>
     <div class="filter-group">
       <label>Loja</label>
-      <select id="d3-loja"><option value="">Todas</option></select>
+      <select id="d3-loja" data-multi-filter="1" multiple><option value="">Todas</option></select>
     </div>
     <div class="filter-group">
       <label>Categoria</label>
-      <select id="d3-cat"><option value="">Todas</option></select>
+      <select id="d3-cat" data-multi-filter="1" multiple><option value="">Todas</option></select>
     </div>
     <div class="filter-group">
       <label>Família</label>
-      <select id="d3-familia"><option value="">Todas</option></select>
+      <select id="d3-familia" data-multi-filter="1" multiple><option value="">Todas</option></select>
     </div>
     <button class="btn-clear" onclick="d3LimparFiltros()">↺ Limpar</button>
   </div>
@@ -1976,6 +2005,118 @@ function filtroMeses() {
   return meses.sort((a,b) => ORD.indexOf(a) - ORD.indexOf(b));
 }
 
+function selectedValues(id) {
+  const el = document.getElementById(id);
+  if (!el) return [];
+  return [...el.selectedOptions].map(o => o.value).filter(Boolean);
+}
+
+function selectedLabels(id) {
+  const el = document.getElementById(id);
+  if (!el) return [];
+  return [...el.selectedOptions].filter(o => o.value).map(o => o.textContent.trim());
+}
+
+function hasSelectedValue(values, actual) {
+  return !values.length || values.includes(String(actual ?? ''));
+}
+
+function clearSelect(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el.tagName !== 'SELECT') {
+    el.value = '';
+    return;
+  }
+  [...el.options].forEach(o => { o.selected = false; });
+  updateMultiSelect(el);
+}
+
+function formatSelection(values, singular, plural) {
+  if (!values.length) return '';
+  if (values.length <= 2) return values.join(', ');
+  return `${values.length} ${plural || singular}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+
+function periodoLabel(prefix) {
+  const anos = selectedValues(`${prefix}-ano`);
+  const meses = selectedValues(`${prefix}-mes`);
+  return [
+    formatSelection(anos, 'ano', 'anos'),
+    formatSelection(meses, 'meses', 'meses')
+  ].filter(Boolean).join(' · ') || 'Todos os períodos';
+}
+
+function filtroLabel(id, vazio, plural) {
+  const labels = selectedLabels(id);
+  if (!labels.length) return vazio;
+  if (labels.length <= 2) return labels.join(', ');
+  return `${labels.length} ${plural}`;
+}
+
+function prepararMultiSelect(select) {
+  if (!select || select.dataset.multiFilter !== '1') return;
+  select.classList.add('native-multi-hidden');
+  select.multiple = true;
+  let wrap = select.nextElementSibling;
+  if (!wrap || !wrap.classList.contains('multi-select')) {
+    wrap = document.createElement('div');
+    wrap.className = 'multi-select';
+    wrap.innerHTML = '<button type="button" class="multi-select-btn"><span class="multi-select-label"></span></button><div class="multi-select-menu"></div>';
+    select.insertAdjacentElement('afterend', wrap);
+    wrap.querySelector('.multi-select-btn').addEventListener('click', () => {
+      document.querySelectorAll('.multi-select.open').forEach(el => { if (el !== wrap) el.classList.remove('open'); });
+      wrap.classList.toggle('open');
+    });
+  }
+  updateMultiSelect(select);
+}
+
+function updateMultiSelect(selectOrId) {
+  const select = typeof selectOrId === 'string' ? document.getElementById(selectOrId) : selectOrId;
+  if (!select || select.dataset.multiFilter !== '1') return;
+  const wrap = select.nextElementSibling;
+  if (!wrap || !wrap.classList.contains('multi-select')) return;
+  const values = selectedValues(select.id);
+  const labels = selectedLabels(select.id);
+  const emptyLabel = select.options[0]?.textContent?.trim() || 'Todos';
+  wrap.querySelector('.multi-select-label').textContent = formatSelection(labels, '', '') || emptyLabel;
+  const menu = wrap.querySelector('.multi-select-menu');
+  const options = [...select.options].filter(o => o.value);
+  menu.innerHTML = [
+    `<label class="multi-select-option all"><input type="checkbox" value="" ${values.length ? '' : 'checked'}>${escapeHtml(emptyLabel)}</label>`,
+    ...options.map(o => `<label class="multi-select-option"><input type="checkbox" value="${escapeHtml(o.value)}" ${o.selected ? 'checked' : ''}>${escapeHtml(o.textContent)}</label>`)
+  ].join('');
+  menu.querySelectorAll('input').forEach(input => {
+    input.addEventListener('change', () => {
+      if (!input.value) {
+        [...select.options].forEach(o => { o.selected = false; });
+      } else {
+        const opt = [...select.options].find(o => o.value === input.value);
+        if (opt) opt.selected = input.checked;
+      }
+      updateMultiSelect(select);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  });
+}
+
+function prepararTodosMultiSelect() {
+  document.querySelectorAll('select[data-multi-filter="1"]').forEach(prepararMultiSelect);
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.multi-select')) {
+    document.querySelectorAll('.multi-select.open').forEach(el => el.classList.remove('open'));
+  }
+});
+
 function filtroLojas(apenasComDePara = false) {
   const base = filterOptions.lojas.length
     ? filterOptions.lojas
@@ -1999,6 +2140,7 @@ function preencherAnoMesTodasAbas() {
       mesEl.innerHTML = '<option value="">Todos</option>' + meses.map(m => `<option>${m}</option>`).join('');
     }
   });
+  prepararTodosMultiSelect();
 }
 
 function construirFiltros() {
@@ -2023,6 +2165,7 @@ function construirFiltros() {
   }).join('');
   sC.innerHTML = '<option value="">Todas</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
   sF.innerHTML = '<option value="">Todas</option>' + familias.map(f => `<option value="${f}">${f}</option>`).join('');
+  prepararTodosMultiSelect();
 
   ['f-ano','f-mes','f-di','f-df','f-loja','f-cat','f-familia'].forEach(id =>
     document.getElementById(id).addEventListener('change', renderizar)
@@ -2030,26 +2173,26 @@ function construirFiltros() {
 }
 
 function limparFiltros() {
-  ['f-ano','f-mes','f-di','f-df','f-loja','f-cat','f-familia'].forEach(id => document.getElementById(id).value = '');
+  ['f-ano','f-mes','f-di','f-df','f-loja','f-cat','f-familia'].forEach(id => clearSelect(id));
   f_active = { dim: null, val: null };
   renderizar();
 }
 
 function filtrar(excl) {
-  const ano     = document.getElementById('f-ano').value;
-  const mes     = document.getElementById('f-mes').value;
+  const anos    = selectedValues('f-ano');
+  const meses   = selectedValues('f-mes');
   const di      = document.getElementById('f-di').value;
   const df      = document.getElementById('f-df').value;
-  const loja    = document.getElementById('f-loja').value;
-  const cat     = document.getElementById('f-cat').value;
-  const familia = document.getElementById('f-familia').value;
+  const lojas   = selectedValues('f-loja');
+  const cats    = selectedValues('f-cat');
+  const familias = selectedValues('f-familia');
 
   return rawData.filter(r => {
-    if (ano     && col(r,'Ano') !== ano) return false;
-    if (mes     && col(r,'Mês','Mes') !== mes) return false;
-    if (loja    && col(r,'Loja','loja') !== loja) return false;
-    if (cat     && getCat(r) !== cat) return false;
-    if (familia && getFamilia(r) !== familia) return false;
+    if (!hasSelectedValue(anos, col(r,'Ano'))) return false;
+    if (!hasSelectedValue(meses, col(r,'Mês','Mes'))) return false;
+    if (!hasSelectedValue(lojas, col(r,'Loja','loja'))) return false;
+    if (!hasSelectedValue(cats, getCat(r))) return false;
+    if (!hasSelectedValue(familias, getFamilia(r))) return false;
     if (f_active.val && f_active.dim !== excl) {
       if (f_active.dim === 'loja'    && col(r,'Loja','loja') !== f_active.val) return false;
       if (f_active.dim === 'cat'     && getCat(r) !== f_active.val) return false;
@@ -2088,19 +2231,20 @@ function agruparPorLoja(data) {
 }
 
 function buildAgreParams(prefix, activeObj) {
-  const g = id => document.getElementById(id)?.value || '';
   const params = new URLSearchParams();
-  const ano = g(`${prefix}-ano`), mes = g(`${prefix}-mes`),
-        di  = g(`${prefix}-di`),  df  = g(`${prefix}-df`),
-        loja = g(`${prefix}-loja`), cat = g(`${prefix}-cat`),
-        familia = g(`${prefix}-familia`);
-  if (ano)    params.set('ano', ano);
-  if (mes)    params.set('mes', mes);
+  const g = id => document.getElementById(id)?.value || '';
+  const addMulti = (queryName, id) => {
+    const values = selectedValues(id);
+    values.forEach(value => params.append(queryName, value));
+  };
+  addMulti('ano', `${prefix}-ano`);
+  addMulti('mes', `${prefix}-mes`);
+  addMulti('loja', `${prefix}-loja`);
+  addMulti('cat', `${prefix}-cat`);
+  addMulti('familia', `${prefix}-familia`);
+  const di  = g(`${prefix}-di`),  df  = g(`${prefix}-df`);
   if (di)     params.set('di', di);
   if (df)     params.set('df', df);
-  if (loja)   params.set('loja', loja);
-  if (cat)    params.set('cat', cat);
-  if (familia) params.set('familia', familia);
   if (activeObj?.val && ['loja','cat','familia'].includes(activeObj.dim))
     params.set(`ativo_${activeObj.dim}`, activeObj.val);
   return params;
@@ -2237,10 +2381,7 @@ async function renderizar() {
   mostrarBanner('f-active-banner', f_active,
     {loja:'FILIAL', cat:'CATEGORIA', familia:'FAMÍLIA'}, 'fLimparAtivo');
 
-  const ano = document.getElementById('f-ano').value;
-  const mes = document.getElementById('f-mes').value;
-  document.getElementById('chart-sub').textContent =
-    [ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos';
+  document.getElementById('chart-sub').textContent = periodoLabel('f');
   document.getElementById('loja-ativa').style.display = 'none';
 
   const cacheKey = buildAgreParams('f', f_active).toString();
@@ -2493,9 +2634,7 @@ function renderCat1(data, preAg, ag) {
   const cat1TotalEl = document.getElementById('cat1-total-val');
   if (cat1TotalEl) cat1TotalEl.textContent = displayTotal > 0 ? displayTotal.toLocaleString('pt-BR') : '—';
 
-  const ano = document.getElementById('f-ano').value;
-  const mes = document.getElementById('f-mes').value;
-  document.getElementById('cat1-sub').textContent = [ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos';
+  document.getElementById('cat1-sub').textContent = periodoLabel('f');
 
   const state = document.getElementById('cat1-state');
   const semDepara = Object.keys(catMap).length === 0 && !preAg;
@@ -2647,9 +2786,7 @@ function renderFam1(data, preAg, ag) {
   const fam1TotalEl = document.getElementById('fam1-total-val');
   if (fam1TotalEl) fam1TotalEl.textContent = displayTotal > 0 ? displayTotal.toLocaleString('pt-BR') : '—';
 
-  const ano = document.getElementById('f-ano').value;
-  const mes = document.getElementById('f-mes').value;
-  document.getElementById('fam1-sub').textContent = [ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos';
+  document.getElementById('fam1-sub').textContent = periodoLabel('f');
 
   const state = document.getElementById('fam1-state');
   const semDepara = Object.keys(familiaMap).length === 0 && !preAg;
@@ -2859,6 +2996,7 @@ function d2ConstruirFiltros() {
   }).join('');
   document.getElementById('d2-cat').innerHTML     = '<option value="">Todas</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
   document.getElementById('d2-familia').innerHTML = '<option value="">Todas</option>' + familias.map(f => `<option value="${f}">${f}</option>`).join('');
+  prepararTodosMultiSelect();
 
   ['d2-ano','d2-mes','d2-di','d2-df','d2-loja','d2-cat','d2-familia'].forEach(id =>
     document.getElementById(id).addEventListener('change', d2Renderizar)
@@ -2869,26 +3007,26 @@ function d2ConstruirFiltros() {
 }
 
 function d2LimparFiltros() {
-  ['d2-ano','d2-mes','d2-di','d2-df','d2-loja','d2-cat','d2-familia'].forEach(id => document.getElementById(id).value = '');
+  ['d2-ano','d2-mes','d2-di','d2-df','d2-loja','d2-cat','d2-familia'].forEach(id => clearSelect(id));
   d2_active = { dim: null, val: null };
   d2Renderizar();
 }
 
 function d2Filtrar(excl) {
-  const ano     = document.getElementById('d2-ano').value;
-  const mes     = document.getElementById('d2-mes').value;
+  const anos    = selectedValues('d2-ano');
+  const meses   = selectedValues('d2-mes');
   const di      = document.getElementById('d2-di').value;
   const df      = document.getElementById('d2-df').value;
-  const loja    = document.getElementById('d2-loja').value;
-  const cat     = document.getElementById('d2-cat').value;
-  const familia = document.getElementById('d2-familia').value;
+  const lojas   = selectedValues('d2-loja');
+  const cats    = selectedValues('d2-cat');
+  const familias = selectedValues('d2-familia');
 
   return rawData.filter(r => {
-    if (ano     && col(r,'Ano') !== ano) return false;
-    if (mes     && col(r,'Mês','Mes') !== mes) return false;
-    if (loja    && col(r,'Loja','loja') !== loja) return false;
-    if (cat     && getCat(r) !== cat) return false;
-    if (familia && getFamilia(r) !== familia) return false;
+    if (!hasSelectedValue(anos, col(r,'Ano'))) return false;
+    if (!hasSelectedValue(meses, col(r,'Mês','Mes'))) return false;
+    if (!hasSelectedValue(lojas, col(r,'Loja','loja'))) return false;
+    if (!hasSelectedValue(cats, getCat(r))) return false;
+    if (!hasSelectedValue(familias, getFamilia(r))) return false;
     if (d2_active.val && d2_active.dim !== excl) {
       if (d2_active.dim === 'cat' && getCat(r) !== d2_active.val) return false;
       if (d2_active.dim === 'data') {
@@ -3004,13 +3142,10 @@ function d2RenderSemDados() {
 async function d2Renderizar() {
   mostrarBanner('d2-active-banner', d2_active, {cat:'CATEGORIA', data:'DATA'}, 'd2LimparAtivo');
 
-  const ano  = document.getElementById('d2-ano').value;
-  const mes  = document.getElementById('d2-mes').value;
-  const loja = document.getElementById('d2-loja').value;
-  const nomeLoja = loja ? (document.getElementById('d2-loja').selectedOptions[0]?.text || '') : 'Todas as lojas';
+  const nomeLoja = filtroLabel('d2-loja', 'Todas as lojas', 'lojas');
 
   document.getElementById('d2-chart-sub').textContent =
-    ([ano, mes].filter(Boolean).join(' · ') || 'Todos os períodos') + ' · ' + nomeLoja;
+    periodoLabel('d2') + ' · ' + nomeLoja;
 
   const toDia = r => {
     const dt = parseDataBR(String(r.data || ''));
@@ -3200,11 +3335,8 @@ function d2AtualizarGrafico(porDia, porDiaTabela, ag) {
 }
 
 function renderCat2(data, preAg) {
-  const loja = document.getElementById('d2-loja').value;
-  const ano  = document.getElementById('d2-ano').value;
-  const mes  = document.getElementById('d2-mes').value;
-  const nomeLoja = loja ? (document.getElementById('d2-loja').selectedOptions[0]?.text || '') : 'Todas as lojas';
-  document.getElementById('cat2-sub').textContent = ([ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos') + ' · ' + nomeLoja;
+  const nomeLoja = filtroLabel('d2-loja', 'Todas as lojas', 'lojas');
+  document.getElementById('cat2-sub').textContent = periodoLabel('d2') + ' · ' + nomeLoja;
 
   const agRows = preAg
     ? preAg.filter(r =>
@@ -3270,7 +3402,7 @@ function renderCat2(data, preAg) {
     const legend = document.getElementById('cat2-legend');
     if (!legend) return;
 
-    const catAtiva = document.getElementById('d2-cat').value;
+    const catAtiva = selectedValues('d2-cat')[0] || '';
     const dataLabel = dataIndex !== null && dias[dataIndex] ? d2FormatarData(dias[dataIndex]) : null;
 
     let entries;
@@ -3387,11 +3519,8 @@ function cat2OrdenarPor(coluna) {
 }
 
 function renderFam2(data, preAg) {
-  const loja = document.getElementById('d2-loja').value;
-  const ano  = document.getElementById('d2-ano').value;
-  const mes  = document.getElementById('d2-mes').value;
-  const nomeLoja = loja ? (document.getElementById('d2-loja').selectedOptions[0]?.text || '') : 'Todas as lojas';
-  document.getElementById('fam2-sub').textContent = ([ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos') + ' · ' + nomeLoja;
+  const nomeLoja = filtroLabel('d2-loja', 'Todas as lojas', 'lojas');
+  document.getElementById('fam2-sub').textContent = periodoLabel('d2') + ' · ' + nomeLoja;
 
   const agRows = preAg
     ? preAg.filter(r =>
@@ -3560,6 +3689,7 @@ function d3ConstruirFiltros() {
   }).join('');
   document.getElementById('d3-cat').innerHTML     = '<option value="">Todas</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
   document.getElementById('d3-familia').innerHTML = '<option value="">Todas</option>' + familias.map(f => `<option value="${f}">${f}</option>`).join('');
+  prepararTodosMultiSelect();
 
   ['d3-ano','d3-mes','d3-di','d3-df','d3-loja','d3-cat','d3-familia'].forEach(id =>
     document.getElementById(id).addEventListener('change', d3Renderizar)
@@ -3568,26 +3698,26 @@ function d3ConstruirFiltros() {
 }
 
 function d3LimparFiltros() {
-  ['d3-ano','d3-mes','d3-di','d3-df','d3-loja','d3-cat','d3-familia'].forEach(id => document.getElementById(id).value = '');
+  ['d3-ano','d3-mes','d3-di','d3-df','d3-loja','d3-cat','d3-familia'].forEach(id => clearSelect(id));
   d3_active = { dim: null, val: null };
   d3Renderizar();
 }
 
 function d3Filtrar(excl) {
-  const ano     = document.getElementById('d3-ano').value;
-  const mes     = document.getElementById('d3-mes').value;
+  const anos    = selectedValues('d3-ano');
+  const meses   = selectedValues('d3-mes');
   const di      = document.getElementById('d3-di').value;
   const df      = document.getElementById('d3-df').value;
-  const loja    = document.getElementById('d3-loja').value;
-  const cat     = document.getElementById('d3-cat').value;
-  const familia = document.getElementById('d3-familia').value;
+  const lojas   = selectedValues('d3-loja');
+  const cats    = selectedValues('d3-cat');
+  const familias = selectedValues('d3-familia');
 
   return rawData.filter(r => {
-    if (ano     && col(r,'Ano') !== ano) return false;
-    if (mes     && col(r,'Mês','Mes') !== mes) return false;
-    if (loja    && col(r,'Loja','loja') !== loja) return false;
-    if (cat     && getCat(r) !== cat) return false;
-    if (familia && getFamilia(r) !== familia) return false;
+    if (!hasSelectedValue(anos, col(r,'Ano'))) return false;
+    if (!hasSelectedValue(meses, col(r,'Mês','Mes'))) return false;
+    if (!hasSelectedValue(lojas, col(r,'Loja','loja'))) return false;
+    if (!hasSelectedValue(cats, getCat(r))) return false;
+    if (!hasSelectedValue(familias, getFamilia(r))) return false;
     if (d3_active.val && d3_active.dim !== excl) {
       if (d3_active.dim === 'loja' && col(r,'Loja','loja') !== d3_active.val) return false;
     }
@@ -3614,11 +3744,8 @@ function d3Renderizar() {
   mostrarBanner('d3-active-banner', d3_active, {loja:'FILIAL'}, 'd3LimparAtivo');
   const dados = d3Filtrar();
   const dadosTabela = d3Filtrar('loja');
-  const ano   = document.getElementById('d3-ano').value;
-  const mes   = document.getElementById('d3-mes').value;
-  const loja  = document.getElementById('d3-loja').value;
-  const nomeLoja = loja ? (document.getElementById('d3-loja').selectedOptions[0]?.text || '') : 'Todas as lojas';
-  const periodo  = ([ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos') + ' · ' + nomeLoja;
+  const nomeLoja = filtroLabel('d3-loja', 'Todas as lojas', 'lojas');
+  const periodo  = periodoLabel('d3') + ' · ' + nomeLoja;
   document.getElementById('d3-chart-sub').textContent = periodo;
   document.getElementById('d3-line-sub').textContent  = periodo;
 
@@ -4010,9 +4137,9 @@ function d3RenderLineAgregado(ag) {
     return;
   }
 
-  const lojaSelecionada = document.getElementById('d3-loja').value;
+  const lojasSelecionadas = selectedValues('d3-loja');
   const dias = [...new Set(rows.map(r => r.data))].sort();
-  const lojas = lojaSelecionada ? [lojaSelecionada] : (() => {
+  const lojas = lojasSelecionadas.length ? lojasSelecionadas : (() => {
     const totPorLoja = {};
     rows.forEach(r => { totPorLoja[r.loja] = (totPorLoja[r.loja] || 0) + r.qty; });
     return Object.entries(totPorLoja).sort((a,b) => b[1]-a[1]).slice(0,10).map(([l]) => l);
@@ -4378,6 +4505,7 @@ function seConstruirFiltros() {
   document.getElementById('se-loja').innerHTML    = '<option value="">Todas</option>' + lojas.map(l => `<option value="${l}">#${l} · ${deParaMap[String(l).trim()]}</option>`).join('');
   document.getElementById('se-cat').innerHTML     = '<option value="">Todas</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
   document.getElementById('se-familia').innerHTML = '<option value="">Todas</option>' + familias.map(f => `<option value="${f}">${f}</option>`).join('');
+  prepararTodosMultiSelect();
 
   ['se-ano','se-mes','se-di','se-df','se-loja','se-cat','se-familia'].forEach(id =>
     document.getElementById(id).addEventListener('change', seRenderizar)
@@ -4388,7 +4516,7 @@ function seConstruirFiltros() {
 }
 
 function seLimparFiltros() {
-  ['se-ano','se-mes','se-di','se-df','se-loja','se-cat','se-familia'].forEach(id => document.getElementById(id).value = '');
+  ['se-ano','se-mes','se-di','se-df','se-loja','se-cat','se-familia'].forEach(id => clearSelect(id));
   se_active = { dim: null, val: null };
   seRenderizar();
 }
@@ -4399,13 +4527,13 @@ function seFiltrarPorLoja(loja) {
 }
 
 function seFiltrar(excl) {
-  const ano     = document.getElementById('se-ano').value;
-  const mes     = document.getElementById('se-mes').value;
+  const anos    = selectedValues('se-ano');
+  const meses   = selectedValues('se-mes');
   const di      = document.getElementById('se-di').value;
   const df      = document.getElementById('se-df').value;
-  const loja    = document.getElementById('se-loja').value;
-  const cat     = document.getElementById('se-cat').value;
-  const familia = document.getElementById('se-familia').value;
+  const lojas   = selectedValues('se-loja');
+  const cats    = selectedValues('se-cat');
+  const familias = selectedValues('se-familia');
 
   return rawData.filter(r => {
     const lojaRaw = col(r,'Loja','loja');
@@ -4414,11 +4542,11 @@ function seFiltrar(excl) {
     // Regra: loja fora do De-Para não existe para o painel
     if (!lojaKey || !deParaMap[lojaKey]) return false;
 
-    if (ano     && col(r,'Ano') !== ano) return false;
-    if (mes     && col(r,'Mês','Mes') !== mes) return false;
-    if (loja    && lojaKey !== loja) return false;
-    if (cat     && getCat(r) !== cat) return false;
-    if (familia && getFamilia(r) !== familia) return false;
+    if (!hasSelectedValue(anos, col(r,'Ano'))) return false;
+    if (!hasSelectedValue(meses, col(r,'Mês','Mes'))) return false;
+    if (!hasSelectedValue(lojas, lojaKey)) return false;
+    if (!hasSelectedValue(cats, getCat(r))) return false;
+    if (!hasSelectedValue(familias, getFamilia(r))) return false;
 
     if (se_active.val && se_active.dim !== excl) {
       if (se_active.dim === 'loja' && lojaKey !== se_active.val) return false;
@@ -4507,10 +4635,7 @@ function seAplicarSort(data, sortState) {
 
 function seRenderizar() {
   mostrarBanner('se-active-banner', se_active, {loja:'FILIAL'}, 'seLimparFiltros');
-  const ano = document.getElementById('se-ano').value;
-  const mes = document.getElementById('se-mes').value;
-  document.getElementById('se-chart-sub').textContent =
-    [ano, mes].filter(Boolean).join(' · ') || 'Todos os períodos';
+  document.getElementById('se-chart-sub').textContent = periodoLabel('se');
   seRenderizarAgregado();
   return;
 
@@ -4944,6 +5069,7 @@ function vConstruirFiltros() {
   }).join('');
   document.getElementById('v-cat').innerHTML     = '<option value="">Todas</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
   document.getElementById('v-familia').innerHTML = '<option value="">Todas</option>' + familias.map(f => `<option value="${f}">${f}</option>`).join('');
+  prepararTodosMultiSelect();
 
   ['v-ano','v-mes','v-di','v-df','v-loja','v-cat','v-familia'].forEach(id =>
     document.getElementById(id).addEventListener('change', vRenderizar)
@@ -4952,26 +5078,26 @@ function vConstruirFiltros() {
 }
 
 function vLimparFiltros() {
-  ['v-ano','v-mes','v-di','v-df','v-loja','v-cat','v-familia'].forEach(id => document.getElementById(id).value = '');
+  ['v-ano','v-mes','v-di','v-df','v-loja','v-cat','v-familia'].forEach(id => clearSelect(id));
   v_active = { dim: null, val: null };
   vRenderizar();
 }
 
 function vFiltrar(excl) {
-  const ano     = document.getElementById('v-ano').value;
-  const mes     = document.getElementById('v-mes').value;
+  const anos    = selectedValues('v-ano');
+  const meses   = selectedValues('v-mes');
   const di      = document.getElementById('v-di').value;
   const df      = document.getElementById('v-df').value;
-  const loja    = document.getElementById('v-loja').value;
-  const cat     = document.getElementById('v-cat').value;
-  const familia = document.getElementById('v-familia').value;
+  const lojas   = selectedValues('v-loja');
+  const cats    = selectedValues('v-cat');
+  const familias = selectedValues('v-familia');
 
   return rawData.filter(r => {
-    if (ano     && col(r,'Ano') !== ano) return false;
-    if (mes     && col(r,'Mês','Mes') !== mes) return false;
-    if (loja    && col(r,'Loja','loja') !== loja) return false;
-    if (cat     && getCat(r) !== cat) return false;
-    if (familia && getFamilia(r) !== familia) return false;
+    if (!hasSelectedValue(anos, col(r,'Ano'))) return false;
+    if (!hasSelectedValue(meses, col(r,'Mês','Mes'))) return false;
+    if (!hasSelectedValue(lojas, col(r,'Loja','loja'))) return false;
+    if (!hasSelectedValue(cats, getCat(r))) return false;
+    if (!hasSelectedValue(familias, getFamilia(r))) return false;
     if (v_active.val && v_active.dim !== excl) {
       if (v_active.dim === 'loja' && col(r,'Loja','loja') !== v_active.val) return false;
       if (v_active.dim === 'cat'  && getCat(r) !== v_active.val) return false;
@@ -5211,9 +5337,7 @@ function vRenderCat1(data, preAg, ag) {
   const vCat1TotalEl = document.getElementById('v-cat1-total-val');
   if (vCat1TotalEl) vCat1TotalEl.textContent = displayTotal > 0 ? vFmtR(displayTotal) : '—';
 
-  const ano = document.getElementById('v-ano').value;
-  const mes = document.getElementById('v-mes').value;
-  document.getElementById('v-cat1-sub').textContent = [ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos';
+  document.getElementById('v-cat1-sub').textContent = periodoLabel('v');
 
   const state = document.getElementById('v-cat1-state');
   const semDepara = Object.keys(catMap).length === 0 && !preAg;
@@ -5337,9 +5461,7 @@ function vRenderFam1(data, preAg, ag) {
   const vFam1TotalEl = document.getElementById('v-fam1-total-val');
   if (vFam1TotalEl) vFam1TotalEl.textContent = displayTotalFam > 0 ? vFmtR(displayTotalFam) : '—';
 
-  const ano = document.getElementById('v-ano').value;
-  const mes = document.getElementById('v-mes').value;
-  document.getElementById('v-fam1-sub').textContent = [ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos';
+  document.getElementById('v-fam1-sub').textContent = periodoLabel('v');
 
   const state = document.getElementById('v-fam1-state');
   const semDepara = Object.keys(familiaMap).length === 0 && !preAg;
@@ -5479,9 +5601,7 @@ function vFam1OrdenarPor(coluna) {
 async function vRenderizar() {
   mostrarBanner('v-active-banner', v_active, {loja:'FILIAL', cat:'CATEGORIA', familia:'FAMÍLIA'}, 'vLimparAtivo');
 
-  const ano = document.getElementById('v-ano').value;
-  const mes = document.getElementById('v-mes').value;
-  document.getElementById('v-chart-sub').textContent = [ano,mes].filter(Boolean).join(' · ') || 'Todos os períodos';
+  document.getElementById('v-chart-sub').textContent = periodoLabel('v');
   document.getElementById('v-loja-ativa').style.display = 'none';
 
   const cacheKey = buildAgreParams('v', v_active).toString();
@@ -5555,9 +5675,11 @@ function aplicarFiltroAtual(prefix) {
   if (elAno) {
     const temAno = [...elAno.options].some(o => o.value === anoAtual);
     if (temAno) elAno.value = anoAtual;
+    updateMultiSelect(elAno);
   }
   if (elMes) {
     elMes.value = '';
+    updateMultiSelect(elMes);
   }
 }
 
