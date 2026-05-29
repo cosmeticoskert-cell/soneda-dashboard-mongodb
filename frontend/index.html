@@ -3532,20 +3532,31 @@ function cat2OrdenarPor(coluna) {
 function renderFam2(data, preAg) {
   const nomeLoja = filtroLabel('d2-loja', 'Todas as lojas', 'lojas');
   document.getElementById('fam2-sub').textContent = periodoLabel('d2') + ' · ' + nomeLoja;
+  const familiasSelecionadas = selectedValues('d2-familia');
+  const d2SelF = d2_active.dim === 'familia'
+    ? d2_active.val
+    : (familiasSelecionadas.length === 1 ? familiasSelecionadas[0] : null);
 
   const agRows = preAg
     ? preAg.filter(r =>
         r.data &&
         (!d2_active.val || d2_active.dim !== 'data' ||
-          normalizeFilterValue(r.data) === normalizeFilterValue(d2_active.val))
+          normalizeFilterValue(r.data) === normalizeFilterValue(d2_active.val)) &&
+        (!d2SelF || normalizeFilterValue(r.fam || 'Sem mapeamento') === normalizeFilterValue(d2SelF))
       )
     : null;
   const fams = agRows
     ? [...new Set(agRows.map(r => r.fam || 'Sem mapeamento').filter(Boolean))].sort()
-    : [...new Set(data.map(r => getFamilia(r) || 'Sem mapeamento').filter(Boolean))].sort();
+    : [...new Set(data
+        .filter(r => !d2SelF || normalizeFilterValue(getFamilia(r) || 'Sem mapeamento') === normalizeFilterValue(d2SelF))
+        .map(r => getFamilia(r) || 'Sem mapeamento')
+        .filter(Boolean)
+      )].sort();
   const dias = agRows
     ? [...new Set(agRows.map(r => r.data).filter(Boolean))].sort()
-    : [...new Set(data.map(r => {
+    : [...new Set(data.filter(r =>
+      !d2SelF || normalizeFilterValue(getFamilia(r) || 'Sem mapeamento') === normalizeFilterValue(d2SelF)
+    ).map(r => {
       const dt = d2ParseData(col(r,'Data','data'));
       return dt ? dataParaISO(dt) : null;
     }).filter(Boolean))].sort();
@@ -3581,7 +3592,6 @@ function renderFam2(data, preAg) {
   }
   if (fam2Chart) { fam2Chart.destroy(); fam2Chart = null; }
 
-  const d2SelF = d2_active.dim === 'familia' ? d2_active.val : null;
   const famsGrafico = d2SelF
     ? fams.filter(f => normalizeFilterValue(f) === normalizeFilterValue(d2SelF))
     : fams;
