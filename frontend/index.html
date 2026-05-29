@@ -374,7 +374,7 @@
   </div>
   <div id="se-active-banner" class="active-banner" style="display:none"></div>
 
-  <div class="kpi-row">
+  <div class="kpi-row" id="se-kpi-row">
     <div class="kpi-card"><div class="kpi-label">Sell Out Total</div><div class="kpi-value" id="se-kpi-sellout">—</div><div class="kpi-sub">unidades vendidas</div></div>
     <div class="kpi-card"><div class="kpi-label">Estoque Total</div><div class="kpi-value" id="se-kpi-estoque">—</div><div class="kpi-sub">unidades em estoque</div></div>
   </div>
@@ -1264,7 +1264,7 @@
   <div id="d3-active-banner" class="active-banner" style="display:none"></div>
 
   <!-- KPIs -->
-  <div class="kpi-row">
+  <div class="kpi-row" id="d3-kpi-row">
     <div class="kpi-card">
       <div class="kpi-label">Estoque Total (Qtd)</div>
       <div class="kpi-value" id="d3-kpi-total">—</div>
@@ -2271,6 +2271,9 @@ function setChartLoading(ids, isLoading) {
   });
 }
 
+const D3_LOADING_IDS = ['d3-kpi-row','d3-chart-wrap','d3-line-wrap','d3-table-body','d3-rot-produtos-body','d3-rot-categorias-body'];
+const SE_LOADING_IDS = ['se-kpi-row','se-chart-wrap','se-table-body'];
+
 // ── PRÉ-AQUECIMENTO DE CACHE ─────────────────────────────────────────────────
 // Chama silenciosamente os próximos filtros mais prováveis para eles já estarem em cache
 let _prefetchTimer = null;
@@ -2452,8 +2455,8 @@ async function renderizar() {
     // Evita disparar consultas pesadas em lote logo apos importacoes grandes.
     // Os filtros continuam carregando sob demanda quando o usuario interage.
   } catch(e) {
-    setChartLoading(['f-kpi-row','chart-wrap','cat1-wrap','fam1-wrap','table-body','cat1-table-body','fam1-table-body'], false);
     if (e.name === 'AbortError') return; // filtro mais recente já está carregando, ignorar
+    setChartLoading(['f-kpi-row','chart-wrap','cat1-wrap','fam1-wrap','table-body','cat1-table-body','fam1-table-body'], false);
     console.warn('Agregados backend indisponíveis:', e.message);
     if (!rawDataPreviewOk) {
       const byLojaChart = agruparPorLoja(filtrar('loja'));
@@ -3191,8 +3194,8 @@ async function d2Renderizar() {
     const [pd, all] = agToDia(ag);
     d2AtualizarGrafico(pd, all, ag);
   } catch(e) {
-    setChartLoading(D2_IDS, false);
     if (e.name === 'AbortError') return;
+    setChartLoading(D2_IDS, false);
     console.warn('Agregados backend indisponíveis:', e.message);
   }
 }
@@ -4024,32 +4027,20 @@ async function d3FetchTotalEstoque(renderSeq = d3_renderSeq, signal = null) {
         d3RenderRotatividadeAgregada(agDetalhado);
         d3RenderLineAgregado(agDetalhado);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (renderSeq === d3_renderSeq) setChartLoading(D3_LOADING_IDS, false);
+      });
   } catch(e) {
     if (e.name === 'AbortError') return;
     // falha silenciosa: mantém os valores do rawData já exibidos
+    if (renderSeq === d3_renderSeq) setChartLoading(D3_LOADING_IDS, false);
   }
 }
 
 function d3SetEstoqueLoading() {
   document.getElementById('d3-status-msg').textContent = 'Carregando estoque...';
-  document.getElementById('d3-kpi-total').textContent = '...';
-  document.getElementById('d3-kpi-lojas').textContent = '...';
-  document.getElementById('d3-kpi-top').textContent = '...';
-  document.getElementById('d3-kpi-top-sub').textContent = '...';
-  document.getElementById('d3-kpi-bot').textContent = '...';
-  document.getElementById('d3-kpi-bot-sub').textContent = '...';
-  const totalEl = document.getElementById('d3-chart-total-val');
-  if (totalEl) totalEl.textContent = '...';
-  const barState = document.getElementById('d3-chart-state');
-  if (barState) { barState.style.display = 'flex'; barState.innerHTML = '<div class="spinner"></div>Carregando dados...'; }
-  const lineState = document.getElementById('d3-line-state');
-  if (lineState) { lineState.style.display = 'flex'; lineState.innerHTML = '<div class="spinner"></div>Carregando dados...'; }
-  if (d3BarChart) { d3BarChart.destroy(); d3BarChart = null; }
-  if (d3LineChart) { d3LineChart.destroy(); d3LineChart = null; }
-  document.getElementById('d3-table-body').innerHTML = '<div class="no-data">Carregando...</div>';
-  document.getElementById('d3-rot-produtos-body').innerHTML = '<div class="no-data">Carregando...</div>';
-  document.getElementById('d3-rot-categorias-body').innerHTML = '<div class="no-data">Carregando...</div>';
+  setChartLoading(D3_LOADING_IDS, true);
 }
 
 function d3RenderResumoEstoqueAgregado(ag) {
@@ -4679,16 +4670,7 @@ function seRenderizar() {
 
 function seSetLoading() {
   document.getElementById('se-status-msg').textContent = 'Carregando sell out x estoque...';
-  document.getElementById('se-kpi-sellout').textContent = '...';
-  document.getElementById('se-kpi-estoque').textContent = '...';
-  const seChartSOEl  = document.getElementById('se-chart-sellout-val');
-  const seChartEstEl = document.getElementById('se-chart-estoque-val');
-  if (seChartSOEl) seChartSOEl.textContent = '...';
-  if (seChartEstEl) seChartEstEl.textContent = '...';
-  const state = document.getElementById('se-chart-state');
-  if (state) { state.style.display = 'flex'; state.innerHTML = '<div class="spinner"></div>Carregando dados...'; }
-  if (seChart) { seChart.destroy(); seChart = null; }
-  document.getElementById('se-table-body').innerHTML = '<div class="no-data">Carregando...</div>';
+  setChartLoading(SE_LOADING_IDS, true);
 }
 
 function seParams(aplicarAtivo = true) {
@@ -4785,8 +4767,10 @@ async function seRenderizarAgregado() {
       seRenderTabela(byLojaTabela);
     }
     seRenderRiskTabela(byLoja);
+    setChartLoading(SE_LOADING_IDS, false);
   } catch(e) {
     if (e.name === 'AbortError') return;
+    setChartLoading(SE_LOADING_IDS, false);
     console.warn('Sell out x estoque agregado indisponível:', e.message);
     const state = document.getElementById('se-chart-state');
     if (state) { state.style.display = 'flex'; state.innerHTML = 'Erro ao carregar dados.'; }
@@ -5646,8 +5630,8 @@ async function vRenderizar() {
     setChartLoading(V_IDS, false);
     renderFromAg(ag, toByLoja(ag));
   } catch(e) {
-    setChartLoading(V_IDS, false);
     if (e.name === 'AbortError') return;
+    setChartLoading(V_IDS, false);
     console.warn('Agregados backend indisponíveis:', e.message);
     if (!rawDataPreviewOk) {
       const byLojaChart = vAgruparPorLoja(vFiltrar('loja'));
